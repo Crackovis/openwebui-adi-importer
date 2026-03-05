@@ -47,25 +47,46 @@ export type EnvConfig = {
 };
 
 const parsePathMapping = (mapping?: string): Array<{ host: string; container: string }> => {
-  if (!mapping) return [];
-  return mapping.split(';').map(entry => {
-    // Split on first ':' that's not part of Windows drive letter (X:)
-    // Windows paths: H:\path or C:\path
-    // Use regex to find separator after drive letter
-    const match = entry.match(/^([^;]+?)(?<!^[A-Za-z]):(.+)$/);
-    if (match) {
-      return { host: match[1].trim(), container: match[2].trim() };
+  if (!mapping) {
+    return [];
+  }
+
+  const raw = mapping.trim();
+  if (!raw) {
+    return [];
+  }
+
+  // JSON format support:
+  // PATH_MAPPING=[{"host":"H:\\Data","container":"/data"}]
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw) as Array<{ host?: string; container?: string }>;
+      return parsed
+        .map((entry) => ({
+          host: entry.host?.trim() ?? "",
+          container: entry.container?.trim() ?? "",
+        }))
+        .filter((entry) => entry.host.length > 0 && entry.container.length > 0);
+    } catch {
+      return [];
     }
-    // Fallback: split on first ':' 
-    const idx = entry.indexOf(':');
-    if (idx > 0) {
-      return { 
-        host: entry.slice(0, idx).trim(), 
-        container: entry.slice(idx + 1).trim() 
-      };
+  }
+
+  // Legacy pair format support (single or multiple pairs):
+  // PATH_MAPPING=H:\\Data;/data;D:\\Exports;/exports
+  const parts = raw.split(";").map((part) => part.trim()).filter((part) => part.length > 0);
+  if (parts.length >= 2 && parts.length % 2 === 0) {
+    const mappings: Array<{ host: string; container: string }> = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      mappings.push({
+        host: parts[i],
+        container: parts[i + 1],
+      });
     }
-    return { host: '', container: '' };
-  }).filter(m => m.host && m.container);
+    return mappings;
+  }
+
+  return [];
 };
 
 const resolveFromAppRoot = (appRoot: string, inputPath: string): string => {

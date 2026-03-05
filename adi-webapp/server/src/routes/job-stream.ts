@@ -40,6 +40,7 @@ export const registerJobStreamRoute = (app: FastifyInstance, deps: JobStreamRout
 
     const pollIntervalMs = deps.pollIntervalMs ?? 1000;
     const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? 15000;
+    const origin = typeof request.headers.origin === "string" ? request.headers.origin : "*";
 
     reply.hijack();
     reply.raw.writeHead(200, {
@@ -47,6 +48,8 @@ export const registerJobStreamRoute = (app: FastifyInstance, deps: JobStreamRout
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      "Access-Control-Allow-Origin": origin,
+      Vary: "Origin",
     });
     if (typeof reply.raw.flushHeaders === "function") {
       reply.raw.flushHeaders();

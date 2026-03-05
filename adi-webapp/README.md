@@ -185,6 +185,8 @@ cd web && npm run test -- --coverage
 | GET | /api/health | Health check |
 | GET | /api/settings | Get settings |
 | PUT | /api/settings | Update settings |
+| POST | /api/upload | Upload one source file |
+| POST | /api/upload/batch | Upload multiple source files |
 | GET | /api/jobs | List jobs |
 | POST | /api/jobs | Create job |
 | GET | /api/jobs/:id | Get job details |

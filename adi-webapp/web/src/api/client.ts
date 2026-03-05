@@ -51,3 +51,12 @@ export const apiPut = async <T, TBody>(path: string, body: TBody): Promise<T> =>
   const payload = await readJson<T>(response);
   return payload.data;
 };
+
+export const apiPostForm = async <T>(path: string, formData: FormData): Promise<T> => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    body: formData,
+  });
+  const payload = await readJson<T>(response);
+  return payload.data;
+};

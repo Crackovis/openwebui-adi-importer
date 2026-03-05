@@ -75,10 +75,20 @@ const startServer = async (): Promise<void> => {
     allowedHeaders: ["Content-Type", "Authorization", "Accept"],
   });
 
+  await app.register(multipart, {
+    limits: {
+      fileSize: env.maxInputTotalBytes,
+      files: env.maxInputFiles,
+    },
+  });
+
   registerHealthRoute(app, { env });
   registerSettingsRoute(app, {
     env,
     settingsRepository,
+  });
+  registerUploadRoute(app, {
+    uploadsDir: env.uploadsDir,
   });
   registerJobsRoute(app, {
     jobsRepository,

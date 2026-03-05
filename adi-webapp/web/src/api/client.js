@@ -41,3 +41,11 @@ export const apiPut = async (path, body) => {
     const payload = await readJson(response);
     return payload.data;
 };
+export const apiPostForm = async (path, formData) => {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "POST",
+        body: formData,
+    });
+    const payload = await readJson(response);
+    return payload.data;
+};

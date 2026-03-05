@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiPost } from "../api/client";
+import { apiPost, apiPostForm } from "../api/client";
 import type { JobMode, JobSource } from "../types";
 
 const STEP_TITLES = ["Source", "Input", "Parameters", "Mode", "Review"];
@@ -20,6 +20,16 @@ type CreateJobResponse = {
   id: string;
   status: string;
   createdAt: number;
+};
+
+type UploadBatchResponse = {
+  count: number;
+  files: Array<{
+    originalName: string;
+    storedName: string;
+    path: string;
+    size: number;
+  }>;
 };
 
 const initialForm: WizardForm = {
@@ -50,6 +60,7 @@ const parseTags = (value: string): string[] => {
 export const ImportWizardPage = (): JSX.Element => {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<WizardForm>(initialForm);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdJob, setCreatedJob] = useState<CreateJobResponse | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,12 +77,28 @@ export const ImportWizardPage = (): JSX.Element => {
     setCreatedJob(null);
 
     try {
+      let resolvedInputPaths = inputPaths;
+
+      if (selectedFiles.length > 0) {
+        const formData = new FormData();
+        for (const file of selectedFiles) {
+          formData.append("files", file);
+        }
+
+        const uploaded = await apiPostForm<UploadBatchResponse>("/api/upload/batch", formData);
+        resolvedInputPaths = uploaded.files.map((file) => file.path);
+      }
+
+      if (resolvedInputPaths.length === 0) {
+        throw new Error("Provide at least one input file path or upload files.");
+      }
+
       const payload =
         form.mode === "direct_db"
           ? {
               source: form.source,
               inputMode: form.inputMode,
-              inputPaths,
+              inputPaths: resolvedInputPaths,
               userId: form.userId,
               tags,
               mode: form.mode,
@@ -81,7 +108,7 @@ export const ImportWizardPage = (): JSX.Element => {
           : {
               source: form.source,
               inputMode: form.inputMode,
-              inputPaths,
+              inputPaths: resolvedInputPaths,
               userId: form.userId,
               tags,
               mode: form.mode,
@@ -144,6 +171,18 @@ export const ImportWizardPage = (): JSX.Element => {
                 <option value="files">Files</option>
                 <option value="folder">Folder</option>
               </select>
+            </div>
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="upload-files">Upload files (recommended)</label>
+              <input
+                id="upload-files"
+                type="file"
+                multiple
+                onChange={(event) => setSelectedFiles(Array.from(event.target.files ?? []))}
+              />
+              <small style={{ color: "#a8b4c7" }}>
+                Selected: {selectedFiles.length} file(s). If files are selected, uploaded paths are used.
+              </small>
             </div>
             <div className="field" style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="paths">Paths (one per line)</label>
