@@ -49,8 +49,22 @@ export type EnvConfig = {
 const parsePathMapping = (mapping?: string): Array<{ host: string; container: string }> => {
   if (!mapping) return [];
   return mapping.split(';').map(entry => {
-    const [host, container] = entry.split(':');
-    return { host: host?.trim(), container: container?.trim() };
+    // Split on first ':' that's not part of Windows drive letter (X:)
+    // Windows paths: H:\path or C:\path
+    // Use regex to find separator after drive letter
+    const match = entry.match(/^([^;]+?)(?<!^[A-Za-z]):(.+)$/);
+    if (match) {
+      return { host: match[1].trim(), container: match[2].trim() };
+    }
+    // Fallback: split on first ':' 
+    const idx = entry.indexOf(':');
+    if (idx > 0) {
+      return { 
+        host: entry.slice(0, idx).trim(), 
+        container: entry.slice(idx + 1).trim() 
+      };
+    }
+    return { host: '', container: '' };
   }).filter(m => m.host && m.container);
 };
 

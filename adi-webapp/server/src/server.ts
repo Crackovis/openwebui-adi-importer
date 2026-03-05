@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { ensureRuntimeDirectories, loadEnv } from "./config/env";
 import { createDbClient } from "./db/client";
@@ -9,6 +10,7 @@ import { registerJobArtifactsRoute } from "./routes/job-artifacts";
 import { registerJobRetryRoute } from "./routes/job-retry";
 import { registerJobStreamRoute } from "./routes/job-stream";
 import { registerSettingsRoute } from "./routes/settings";
+import { registerUploadRoute } from "./routes/upload";
 import { createJobsRepository } from "./db/repositories/jobs-repository";
 import { createSettingsRepository } from "./db/repositories/settings-repository";
 import { createConversionOrchestrator } from "./services/conversion-orchestrator";
