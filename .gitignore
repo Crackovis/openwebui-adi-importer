@@ -1,0 +1,292 @@
+# =============================================================================
+# ADI Importer - Complete Gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PROJECT SPECIFIC - AMORCAGE/BOOTSTRAP
+# -----------------------------------------------------------------------------
+# Fichier d'amorçage du projet (spécification de construction)
+CONSULTE_CE_FICHIER_ET_CONSTRUIT.md
+
+# -----------------------------------------------------------------------------
+# TMP / SESSIONS / TASKS
+# -----------------------------------------------------------------------------
+.tmp/
+.tmp/*
+**/.tmp/
+
+# -----------------------------------------------------------------------------
+# PYTHON (openwebui-importer)
+# -----------------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# -----------------------------------------------------------------------------
+# NODE.JS (adi-webapp)
+# -----------------------------------------------------------------------------
+# Dependencies
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+**/dist/
+dist-ssr/
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Log files
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+**/.nyc_output
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache/
+.parcel-cache
+
+# Next.js build output
+.next/
+out/
+
+# Nuxt.js build / generate output
+.nuxt/
+
+# Storybook build outputs
+.out/
+.storybook-out/
+
+# Temporary folders
+tmp/
+temp/
+
+# -----------------------------------------------------------------------------
+# STORAGE - Runtime Data (keep structure only)
+# -----------------------------------------------------------------------------
+# Application database
+storage/app.db
+storage/app.db-shm
+storage/app.db-wal
+storage/app.db-journal
+
+# User uploads and generated content
+storage/uploads/*
+storage/work/*
+storage/preview/*
+storage/sql/*
+storage/backups/*
+
+# Keep .gitkeep files to preserve directory structure
+!storage/.gitkeep
+!storage/**/.gitkeep
+
+# -----------------------------------------------------------------------------
+# IDEs AND EDITORS
+# -----------------------------------------------------------------------------
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ / WebStorm / PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+*.ids
+*.orig
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# NetBeans
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# -----------------------------------------------------------------------------
+# OPERATING SYSTEM FILES
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# -----------------------------------------------------------------------------
+# BACKUPS AND TEMPORARY FILES
+# -----------------------------------------------------------------------------
+*.bak
+*.backup
+*.orig
+*.save
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# DATABASE
+# -----------------------------------------------------------------------------
+*.db-journal
+*.db-wal
+*.db-shm
+
+# -----------------------------------------------------------------------------
+# DOCKER
+# -----------------------------------------------------------------------------
+.dockerignore
+docker-compose.override.yml

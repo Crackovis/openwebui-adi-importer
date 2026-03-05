@@ -1,0 +1,14 @@
+# Runtime directories and artifacts
+*
+!.gitignore
+!.gitkeep
+!uploads/
+!uploads/.gitkeep
+!work/
+!work/.gitkeep
+!preview/
+!preview/.gitkeep
+!sql/
+!sql/.gitkeep
+!backups/
+!backups/.gitkeep

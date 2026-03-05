@@ -1,0 +1,47 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /workspace
+    command: sh -lc "cd server && npm install && npm run dev"
+    env_file:
+      - .env
+    environment:
+      PYTHON_BIN: python3
+      IMPORTER_ROOT: /importer-scripts
+    volumes:
+      - ./:/workspace
+      - ../openwebui-importer:/importer-scripts:ro
+      - server_node_modules:/workspace/server/node_modules
+    ports:
+      - "8787:8787"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:8787/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  web:
+    image: node:20-alpine
+    working_dir: /workspace
+    command: sh -lc "cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8787
+    volumes:
+      - ./:/workspace
+      - web_node_modules:/workspace/web/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  server_node_modules:
+  web_node_modules:
