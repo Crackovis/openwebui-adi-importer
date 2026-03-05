@@ -28,12 +28,13 @@ SQL Mode generates a SQL file containing all INSERT statements needed to import 
 ### Workflow
 
 1. **Upload Files** → Select your export files
-2. **Configure** → Set user ID and tags
-3. **Select SQL Mode** → Choose "Generate SQL Only"
-4. **Run Conversion** → System converts and generates SQL
-5. **Download SQL** → Get the generated SQL file
-6. **Review** → Inspect the SQL statements
-7. **Execute** → Run SQL in your OpenWebUI database
+2. **Configure** → Keep auto-detect defaults, add optional tags
+3. **Preview Discovery** → Use "Test Auto-Detection" to verify resolved user and URL
+4. **Select SQL Mode** → Choose "Generate SQL Only"
+5. **Run Conversion** → System converts and generates SQL
+6. **Download SQL** → Get the generated SQL file
+7. **Review** → Inspect the SQL statements
+8. **Execute** → Run SQL in your OpenWebUI database
 
 ### When to Use SQL Mode
 
@@ -96,14 +97,15 @@ Direct DB Mode automatically imports conversations directly into your OpenWebUI 
 ### Workflow
 
 1. **Upload Files** → Select your export files
-2. **Configure** → Set user ID and tags
-3. **Select Direct DB Mode** → Choose "Import Directly to Database"
-4. **Set DB Path** → Path to your webui.db file
-5. **Review Pre-check** → System validates everything
-6. **Confirm** → Explicit confirmation required
-7. **Automatic Backup** → Database backed up automatically
-8. **Import** → Conversations imported directly
-9. **Verify** → Check OpenWebUI for imported conversations
+2. **Configure** → Keep auto-detect defaults, add optional tags
+3. **Preview Discovery** → Use "Test Auto-Detection" and verify resolved user/DB path
+4. **Select Direct DB Mode** → Choose "Import Directly to Database"
+5. **Optional Advanced Override** → Set DB path only if auto-detection fails
+6. **Review Pre-check** → System validates everything
+7. **Confirm** → Explicit confirmation required
+8. **Automatic Backup** → Database backed up automatically
+9. **Import** → Conversations imported directly
+10. **Verify** → Check OpenWebUI for imported conversations
 
 ### When to Use Direct DB Mode
 
@@ -134,9 +136,9 @@ Before import, system validates:
 - ✅ Converter scripts accessible
 - ✅ Input files readable
 - ✅ File extensions valid for source
-- ✅ User ID provided
+- ✅ User identity resolvable (auto or explicit override)
 - ✅ Output directories writable
-- ✅ Target database accessible (Direct DB mode)
+- ✅ Target database path resolvable and accessible (Direct DB mode)
 
 #### 3. Explicit Confirmation
 
@@ -182,12 +184,16 @@ sqlite3 /path/to/webui.db ".restore storage/backups/webui.db.backup.20240315_143
 
 ### Direct DB Configuration
 
-Required settings:
+Optional override settings:
 
 ```bash
-# In .env or Settings page
-DB_PATH=/path/to/your/webui.db
-BACKUPS_DIR=./storage/backups
+# In .env (recommended for stable automation)
+OPENWEBUI_BASE_URL=
+OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
+OPENWEBUI_DATA_DIR=
+OPENWEBUI_DATABASE_URL=
+OPENWEBUI_AUTH_TOKEN=
+OPENWEBUI_API_KEY=
 ```
 
 ## Backup and Restore
@@ -322,9 +328,9 @@ DETACH DATABASE backup;
 
 ### Direct DB Best Practices
 
-1. **Verify User ID**
-   - Double-check user_id before import
-   - Wrong user_id = conversations in wrong account
+1. **Verify Identity Resolution**
+   - Confirm OpenWebUI session or token/API key is valid
+   - If auto-detect fails, provide explicit user ID override
 
 2. **Small Batches First**
    - Test with 1-2 conversations
@@ -398,7 +404,7 @@ crontab -e
 # Daily import at 2 AM
 0 2 * * * cd /path/to/adi-webapp && curl -X POST http://localhost:8787/api/jobs \
   -H "Content-Type: application/json" \
-  -d '{"source":"chatgpt","files":[...],"userId":"...","mode":"direct_db"}'
+  -d '{"source":"chatgpt","files":[...],"mode":"direct_db"}'
 ```
 
 ### Integration with OpenWebUI

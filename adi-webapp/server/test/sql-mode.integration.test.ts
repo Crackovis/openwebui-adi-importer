@@ -22,6 +22,7 @@ const createTestEnv = (rootDir: string): EnvConfig => {
     apiBaseUrl: "http://localhost:8787",
     pythonBin: "python",
     importerRoot: path.join(rootDir, "importer"),
+    pathMapping: [],
     appDbPath: path.join(rootDir, "app.db"),
     uploadsDir: path.join(rootDir, "uploads"),
     workDir: path.join(rootDir, "work"),
@@ -32,6 +33,13 @@ const createTestEnv = (rootDir: string): EnvConfig => {
     maxInputTotalBytes: 1024 * 1024,
     subprocessTimeoutMs: 1000,
     sseHeartbeatMs: 1000,
+    openWebUiBaseUrl: undefined,
+    openWebUiDiscoveryUrls: [],
+    openWebUiDataDir: undefined,
+    openWebUiDatabaseUrl: undefined,
+    openWebUiAuthToken: undefined,
+    openWebUiApiKey: undefined,
+    openWebUiDiscoveryTimeoutMs: 1000,
   };
 };
 
@@ -78,6 +86,7 @@ describe("SQL mode integration", () => {
     });
 
     const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
       run: vi.fn().mockResolvedValue({
         ok: true,
         checks: {
@@ -184,6 +193,7 @@ describe("SQL mode integration", () => {
     const failureMessage = "Input file extension is invalid for source chatgpt.";
 
     const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
       run: vi.fn().mockResolvedValue({
         ok: false,
         checks: {
@@ -245,5 +255,115 @@ describe("SQL mode integration", () => {
     expect(logs.some((entry) => entry.level === "error" && entry.message.includes(failureMessage))).toBe(true);
     expect(conversionOrchestrator.run).not.toHaveBeenCalled();
     expect(sqlOrchestrator.generate).not.toHaveBeenCalled();
+  });
+
+  it("uses resolved precheck identity and dbPath for direct_db mode", async () => {
+    const jobId = "job-direct-db-resolved";
+    createQueuedJob(jobsRepository, jobId);
+
+    const env = createTestEnv(rootDir);
+    const jobLogService = createJobLogService(jobsRepository);
+    const jobStateMachine = createJobStateMachine({
+      jobsRepository,
+      jobLogService,
+    });
+
+    const resolvedDbPath = path.join(rootDir, "openwebui", "webui.db");
+
+    const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
+      run: vi.fn().mockResolvedValue({
+        ok: true,
+        checks: {
+          pythonAvailable: true,
+          scriptPaths: true,
+          inputsReadable: true,
+          extensionsValid: true,
+          userIdPresent: true,
+          outputWritable: true,
+        },
+        resolvedUserId: "resolved-user",
+        resolvedDbPath,
+        resolvedInputFiles: [path.join(rootDir, "inputs", "chat-1.json")],
+        fileCount: 1,
+        totalBytes: 20,
+        issues: [],
+      }),
+    };
+
+    const conversionOrchestrator: ConversionOrchestrator = {
+      run: vi.fn().mockResolvedValue({
+        effectiveTags: ["imported-chatgpt"],
+        convertedFiles: [path.join(rootDir, "normalized", "chat-1.json")],
+        failedFiles: [],
+        convertedCount: 1,
+        normalizedDir: path.join(rootDir, "normalized"),
+        rawOutputDir: path.join(rootDir, "raw", "chatgpt"),
+        preview: {
+          previewPath: path.join(rootDir, "preview", "job-direct-db-resolved.preview.json"),
+          data: {
+            conversationCount: 1,
+            sampleTitles: ["Sample"],
+            sampleMessages: [{ title: "Sample", snippet: "Hello" }],
+            effectiveTags: ["imported-chatgpt"],
+            generatedAt: new Date("2026-03-05T12:00:00.000Z").toISOString(),
+          },
+        },
+      }),
+    };
+
+    const sqlOrchestrator: SqlOrchestrator = {
+      generate: vi.fn().mockResolvedValue({
+        sqlPath: path.join(rootDir, "sql", "job-direct-db-resolved.sql"),
+        stdout: "ok",
+        stderr: "",
+      }),
+    };
+
+    const dbBackupService: DbBackupService = {
+      createBackup: vi.fn().mockReturnValue(path.join(rootDir, "backups", "job-direct-db-resolved.sqlite")),
+    };
+    const dbImportService: DbImportService = {
+      applySql: vi.fn(),
+      expectedConfirmationText: "CONFIRM_DB_WRITE",
+    };
+
+    const jobRunner = createJobRunner({
+      env,
+      jobsRepository,
+      jobStateMachine,
+      jobLogService,
+      precheckService,
+      conversionOrchestrator,
+      sqlOrchestrator,
+      dbBackupService,
+      dbImportService,
+    });
+
+    await jobRunner.runNow({
+      jobId,
+      source: "chatgpt",
+      mode: "direct_db",
+      inputMode: "files",
+      inputPaths: [path.join(rootDir, "inputs", "chat-1.json")],
+      userId: "request-user",
+      tags: [],
+      confirmationText: "CONFIRM_DB_WRITE",
+    });
+
+    const conversionCall = vi.mocked(conversionOrchestrator.run).mock.calls[0]?.[0];
+    const persistedInput = jobsRepository.getJobInput(jobId);
+    const job = jobsRepository.getJobById(jobId);
+
+    expect(conversionCall?.userId).toBe("resolved-user");
+    expect(dbBackupService.createBackup).toHaveBeenCalledWith(resolvedDbPath, jobId);
+    expect(dbImportService.applySql).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dbPath: resolvedDbPath,
+      }),
+    );
+    expect(persistedInput?.userId).toBe("resolved-user");
+    expect(persistedInput?.dbPath).toBe(resolvedDbPath);
+    expect(job?.status).toBe("completed");
   });
 });

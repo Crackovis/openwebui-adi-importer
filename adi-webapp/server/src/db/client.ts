@@ -24,11 +24,26 @@ const runMigrations = (db: DbClient): void => {
   db.exec(sql);
 };
 
+const configureJournalMode = (db: DbClient): void => {
+  try {
+    db.pragma("journal_mode = WAL");
+    return;
+  } catch {
+    // fall through
+  }
+
+  try {
+    db.pragma("journal_mode = DELETE");
+  } catch {
+    // keep SQLite default journal mode when pragma changes are unsupported
+  }
+};
+
 export const createDbClient = (dbPath: string): DbClient => {
   ensureParentDirectory(dbPath);
   const db = new Database(dbPath);
   db.pragma("foreign_keys = ON");
-  db.pragma("journal_mode = WAL");
+  configureJournalMode(db);
   runMigrations(db);
   return db;
 };

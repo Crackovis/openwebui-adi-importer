@@ -5,13 +5,14 @@ import { failure, success } from "../lib/api-response";
 import {
   createJobRequestSchema,
   listJobsQuerySchema,
-  type CreateJobRequest,
 } from "../schemas/jobs-schema";
 import type { JobRunner } from "../services/job-runner";
+import type { PrecheckService } from "../services/precheck-service";
 
 type JobsRouteDeps = {
   jobsRepository: JobsRepository;
   jobRunner: JobRunner;
+  precheckService: PrecheckService;
 };
 
 export const registerJobsRoute = (app: FastifyInstance, deps: JobsRouteDeps): void => {
@@ -23,6 +24,36 @@ export const registerJobsRoute = (app: FastifyInstance, deps: JobsRouteDeps): vo
     }
 
     const payload = parsed.data;
+    const precheck = await deps.precheckService.run({
+      source: payload.source,
+      inputMode: payload.inputMode,
+      inputPaths: payload.inputPaths,
+      userId: payload.userId,
+      mode: payload.mode,
+      tags: payload.tags,
+      dbPath: payload.mode === "direct_db" ? payload.dbPath : undefined,
+      openWebUiBaseUrl: payload.openWebUiBaseUrl,
+      openWebUiDataDir: payload.openWebUiDataDir,
+      openWebUiAuthToken: payload.openWebUiAuthToken,
+      openWebUiApiKey: payload.openWebUiApiKey,
+    });
+    if (!precheck.ok) {
+      reply.code(400);
+      return failure("JOB_PRECHECK_FAILED", precheck.issues[0]?.message ?? "Pre-check failed.");
+    }
+
+    const resolvedUserId = precheck.resolvedUserId ?? payload.userId;
+    if (!resolvedUserId) {
+      reply.code(400);
+      return failure("JOB_PRECHECK_FAILED", "Unable to resolve OpenWebUI user identity.");
+    }
+
+    const resolvedDbPath = payload.mode === "direct_db" ? (precheck.resolvedDbPath ?? payload.dbPath) : undefined;
+    if (payload.mode === "direct_db" && !resolvedDbPath) {
+      reply.code(400);
+      return failure("JOB_PRECHECK_FAILED", "Unable to resolve OpenWebUI database path for Direct DB mode.");
+    }
+
     const jobId = randomUUID();
     const createdAt = Date.now();
 
@@ -44,9 +75,9 @@ export const registerJobsRoute = (app: FastifyInstance, deps: JobsRouteDeps): vo
       mode: payload.mode,
       inputMode: payload.inputMode,
       inputPaths: payload.inputPaths,
-      userId: payload.userId,
+      userId: resolvedUserId,
       tags: payload.tags,
-      dbPath: payload.mode === "direct_db" ? payload.dbPath : undefined,
+      dbPath: resolvedDbPath,
       confirmationText: payload.mode === "direct_db" ? payload.confirmationText : undefined,
     });
 

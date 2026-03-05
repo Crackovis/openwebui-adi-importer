@@ -24,6 +24,13 @@ const envSchema = z.object({
   MAX_INPUT_TOTAL_BYTES: z.coerce.number().int().positive().default(104_857_600),
   SUBPROCESS_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   SSE_HEARTBEAT_MS: z.coerce.number().int().positive().default(10_000),
+  OPENWEBUI_BASE_URL: z.string().optional(),
+  OPENWEBUI_DISCOVERY_URLS: z.string().optional(),
+  OPENWEBUI_DATA_DIR: z.string().optional(),
+  OPENWEBUI_DATABASE_URL: z.string().optional(),
+  OPENWEBUI_AUTH_TOKEN: z.string().optional(),
+  OPENWEBUI_API_KEY: z.string().optional(),
+  OPENWEBUI_DISCOVERY_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
 });
 
 export type EnvConfig = {
@@ -44,6 +51,24 @@ export type EnvConfig = {
   maxInputTotalBytes: number;
   subprocessTimeoutMs: number;
   sseHeartbeatMs: number;
+  openWebUiBaseUrl?: string;
+  openWebUiDiscoveryUrls: string[];
+  openWebUiDataDir?: string;
+  openWebUiDatabaseUrl?: string;
+  openWebUiAuthToken?: string;
+  openWebUiApiKey?: string;
+  openWebUiDiscoveryTimeoutMs: number;
+};
+
+const parseCsv = (value?: string): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 };
 
 const parsePathMapping = (mapping?: string): Array<{ host: string; container: string }> => {
@@ -115,6 +140,13 @@ export const loadEnv = (): EnvConfig => {
     maxInputTotalBytes: parsed.MAX_INPUT_TOTAL_BYTES,
     subprocessTimeoutMs: parsed.SUBPROCESS_TIMEOUT_MS,
     sseHeartbeatMs: parsed.SSE_HEARTBEAT_MS,
+    openWebUiBaseUrl: parsed.OPENWEBUI_BASE_URL?.trim() || undefined,
+    openWebUiDiscoveryUrls: parseCsv(parsed.OPENWEBUI_DISCOVERY_URLS),
+    openWebUiDataDir: parsed.OPENWEBUI_DATA_DIR?.trim() || undefined,
+    openWebUiDatabaseUrl: parsed.OPENWEBUI_DATABASE_URL?.trim() || undefined,
+    openWebUiAuthToken: parsed.OPENWEBUI_AUTH_TOKEN?.trim() || undefined,
+    openWebUiApiKey: parsed.OPENWEBUI_API_KEY?.trim() || undefined,
+    openWebUiDiscoveryTimeoutMs: parsed.OPENWEBUI_DISCOVERY_TIMEOUT_MS,
   };
 };
 

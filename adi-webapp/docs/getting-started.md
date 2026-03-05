@@ -121,6 +121,15 @@ MAX_INPUT_FILES=200                  # Max files per batch
 MAX_INPUT_TOTAL_BYTES=104857600      # 100MB total limit
 SUBPROCESS_TIMEOUT_MS=120000         # 2 minute timeout
 SSE_HEARTBEAT_MS=10000               # 10 second SSE heartbeat
+
+# Optional OpenWebUI auto-discovery overrides
+OPENWEBUI_BASE_URL=
+OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
+OPENWEBUI_DATA_DIR=
+OPENWEBUI_DATABASE_URL=
+OPENWEBUI_AUTH_TOKEN=
+OPENWEBUI_API_KEY=
+OPENWEBUI_DISCOVERY_TIMEOUT_MS=3000
 ```
 
 ### Storage Directories
@@ -175,13 +184,17 @@ Choose the platform your exports are from:
 
 ### Step 5: Configure Import
 
-1. **User ID**: Enter your OpenWebUI user ID (required)
+1. **Auto-detect defaults**: Keep OpenWebUI fields empty in normal cases
 2. **Tags**: Add optional tags (comma-separated)
    - Auto-generated: `imported-<source>`
    - Optional: `imported-YYYY-MM`, `batch-<jobId>`
 3. **Import Mode**:
-   - **SQL Mode**: Generates SQL file for manual execution
-   - **Direct DB Mode**: Imports directly into webui.db
+    - **SQL Mode**: Generates SQL file for manual execution
+    - **Direct DB Mode**: Imports directly into webui.db
+4. **Advanced overrides (optional)**:
+   - OpenWebUI base URL (example: `http://127.0.0.1:42004`)
+   - OpenWebUI token/API key for identity resolution
+   - Explicit user ID or DB path only when auto-detection cannot resolve
 
 ### Step 6: Review and Submit
 
@@ -223,9 +236,9 @@ cd server && npm test
 cd web && npm test
 ```
 
-All 13 tests should pass:
-- 11 backend tests (precheck, state machine, tagging, etc.)
-- 2 frontend tests (wizard flow, job detail)
+All 23 tests should pass:
+- 18 backend tests (precheck, state machine, tagging, SQL integration)
+- 5 frontend tests (wizard flow, job detail)
 
 ## Support
 

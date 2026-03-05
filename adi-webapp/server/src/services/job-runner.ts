@@ -105,12 +105,29 @@ export const createJobRunner = (deps: JobRunnerDeps): JobRunner => {
         throw new JobRunError("failed_precheck", reason);
       }
 
+      const effectiveUserId = precheck.resolvedUserId ?? request.userId;
+      if (!effectiveUserId) {
+        throw new JobRunError("failed_precheck", "Unable to resolve OpenWebUI user identity.");
+      }
+      const effectiveDbPath =
+        request.mode === "direct_db" ? (precheck.resolvedDbPath ?? request.dbPath) : undefined;
+
+      if (effectiveUserId !== request.userId || effectiveDbPath !== request.dbPath) {
+        deps.jobsRepository.upsertJobInput(
+          toJobInputRecord({
+            ...request,
+            userId: effectiveUserId,
+            dbPath: effectiveDbPath,
+          }),
+        );
+      }
+
       deps.jobStateMachine.transition(request.jobId, "converting");
       deps.jobLogService.logInfo(request.jobId, "convert", "Starting conversion process.");
 
       const conversion = await deps.conversionOrchestrator.run({
         source: request.source,
-        userId: request.userId,
+        userId: effectiveUserId,
         inputFiles: precheck.resolvedInputFiles,
         customTags: request.tags,
         jobId: request.jobId,
@@ -145,7 +162,7 @@ export const createJobRunner = (deps: JobRunnerDeps): JobRunner => {
       deps.jobLogService.logInfo(request.jobId, "sql", "SQL artifact generated.");
 
       if (request.mode === "direct_db") {
-        if (!request.dbPath) {
+        if (!effectiveDbPath) {
           throw new JobRunError("failed_db", "Direct DB mode requires dbPath.");
         }
         if (request.confirmationText !== DB_IMPORT_CONFIRMATION_TEXT) {
@@ -159,13 +176,13 @@ export const createJobRunner = (deps: JobRunnerDeps): JobRunner => {
           "Direct DB import started. Backup will be created before write.",
         );
 
-        const backupPath = deps.dbBackupService.createBackup(request.dbPath, request.jobId);
+        const backupPath = deps.dbBackupService.createBackup(effectiveDbPath, request.jobId);
         deps.jobsRepository.patchJobOutput(request.jobId, {
           backupPath,
         });
 
         deps.dbImportService.applySql({
-          dbPath: request.dbPath,
+          dbPath: effectiveDbPath,
           sqlPath: sqlOutput.sqlPath,
           confirmationText: request.confirmationText,
         });

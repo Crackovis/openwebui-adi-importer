@@ -9,6 +9,7 @@ import { registerHealthRoute } from "./routes/health";
 import { registerJobArtifactsRoute } from "./routes/job-artifacts";
 import { registerJobRetryRoute } from "./routes/job-retry";
 import { registerJobStreamRoute } from "./routes/job-stream";
+import { registerOpenWebUiDiscoveryRoute } from "./routes/openwebui-discovery";
 import { registerSettingsRoute } from "./routes/settings";
 import { registerUploadRoute } from "./routes/upload";
 import { createJobsRepository } from "./db/repositories/jobs-repository";
@@ -90,9 +91,13 @@ const startServer = async (): Promise<void> => {
   registerUploadRoute(app, {
     uploadsDir: env.uploadsDir,
   });
+  registerOpenWebUiDiscoveryRoute(app, {
+    precheckService,
+  });
   registerJobsRoute(app, {
     jobsRepository,
     jobRunner,
+    precheckService,
   });
   registerJobStreamRoute(app, {
     jobsRepository,

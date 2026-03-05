@@ -2,24 +2,36 @@ import { z } from "zod";
 import { JOB_MODES, JOB_SOURCES, JOB_STATUSES } from "../domain/job-types";
 import { DB_IMPORT_CONFIRMATION_TEXT } from "./db-import-schema";
 
+const optionalNonEmptyString = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().min(1).optional());
+
 const sharedJobSchema = z.object({
   source: z.enum(JOB_SOURCES),
   inputMode: z.enum(["files", "folder"]),
   inputPaths: z.array(z.string().min(1)).min(1),
-  userId: z.string().min(1),
+  userId: optionalNonEmptyString,
   tags: z.array(z.string()).default([]),
   mode: z.enum(JOB_MODES),
+  openWebUiBaseUrl: optionalNonEmptyString,
+  openWebUiDataDir: optionalNonEmptyString,
+  openWebUiAuthToken: optionalNonEmptyString,
+  openWebUiApiKey: optionalNonEmptyString,
 });
 
 const sqlJobSchema = sharedJobSchema.extend({
   mode: z.literal("sql"),
-  dbPath: z.string().optional(),
+  dbPath: optionalNonEmptyString,
   confirmationText: z.string().optional(),
 });
 
 const directDbJobSchema = sharedJobSchema.extend({
   mode: z.literal("direct_db"),
-  dbPath: z.string().min(1),
+  dbPath: optionalNonEmptyString,
   confirmationText: z.literal(DB_IMPORT_CONFIRMATION_TEXT),
 });
 

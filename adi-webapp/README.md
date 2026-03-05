@@ -2,7 +2,7 @@
 
 A Node.js web application for orchestrating conversation imports into OpenWebUI.
 
-[![Tests](https://img.shields.io/badge/tests-13%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-23%20passing-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)]()
 [![Node](https://img.shields.io/badge/Node-20+-green)]()
 
@@ -13,6 +13,7 @@ ADI Importer provides a web interface to import conversations from various AI pl
 ### Features
 
 - **Import Wizard**: Multi-step guided import process
+- **Auto OpenWebUI Discovery**: Resolves OpenWebUI URL, user identity, and DB path when possible
 - **SQL Generation Mode**: Export import SQL for manual execution
 - **Direct DB Import Mode**: Automatic import with automatic backups
 - **Pre-check Validation**: Validates environment before running
@@ -93,6 +94,15 @@ BACKUPS_DIR=./storage/backups
 MAX_INPUT_FILES=200
 MAX_INPUT_TOTAL_BYTES=104857600
 SUBPROCESS_TIMEOUT_MS=120000
+
+# Optional OpenWebUI auto-discovery overrides
+OPENWEBUI_BASE_URL=
+OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
+OPENWEBUI_DATA_DIR=
+OPENWEBUI_DATABASE_URL=
+OPENWEBUI_AUTH_TOKEN=
+OPENWEBUI_API_KEY=
+OPENWEBUI_DISCOVERY_TIMEOUT_MS=3000
 ```
 
 ## Usage
@@ -106,7 +116,7 @@ Navigate to http://localhost:5173 to see the dashboard.
 1. Click "Import Wizard"
 2. Select source (ChatGPT, Claude, Grok, or AI Studio)
 3. Upload files or select a folder
-4. Enter your OpenWebUI user ID
+4. Keep auto-detection defaults (open advanced overrides only if needed)
 5. Choose import mode (SQL or Direct DB)
 6. Review and submit
 
@@ -126,6 +136,7 @@ Navigate to http://localhost:5173 to see the dashboard.
 - Automatic backup before import
 - One-click execution with rollback protection
 - Detailed logs for troubleshooting
+- Automatic DB path detection first, with optional advanced path override
 
 ## Project Structure
 
@@ -183,6 +194,7 @@ cd web && npm run test -- --coverage
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | /api/health | Health check |
+| POST | /api/openwebui/discovery | Preview OpenWebUI auto-discovery |
 | GET | /api/settings | Get settings |
 | PUT | /api/settings | Update settings |
 | POST | /api/upload | Upload one source file |

@@ -144,7 +144,22 @@ SERVER_PORT=8788
 | "Invalid source format" | Wrong file type for source | Ensure files match selected source |
 | "File too large" | Exceeds size limit | Increase MAX_INPUT_TOTAL_BYTES |
 | "Too many files" | Exceeds file limit | Increase MAX_INPUT_FILES or split batch |
-| "User ID missing" | No userId provided | Enter your OpenWebUI user ID |
+| "Unable to resolve OpenWebUI user identity" | Auto-discovery cannot authenticate to OpenWebUI | Set `OPENWEBUI_AUTH_TOKEN` or use advanced token/API key override |
+| "Unable to resolve OpenWebUI database path" | Direct DB mode cannot infer `webui.db` path | Set `OPENWEBUI_DATA_DIR`, `OPENWEBUI_DATABASE_URL`, or advanced DB path override |
+
+### OpenWebUI Auto-Discovery Returns 401
+
+**Problem**: OpenWebUI endpoint is reachable, but identity lookup fails with `401 Unauthorized`.
+
+**Solutions**:
+1. Add an auth token/API key via advanced wizard override.
+2. Or set `OPENWEBUI_AUTH_TOKEN` in `.env` for operator-managed defaults.
+3. Verify URL candidate list includes your running instance (for example Pinokio at `http://127.0.0.1:42004`).
+4. From Docker, confirm host reachability:
+   ```bash
+   docker compose exec -T server wget -S -O - http://host.docker.internal:42004/api/v1/auths/
+   ```
+   A `401` here means networking works and credentials are the missing piece.
 
 ### Conversion Failed
 
@@ -186,23 +201,31 @@ SERVER_PORT=8788
 **Problem**: Import fails when writing to OpenWebUI database.
 
 **Solutions**:
-1. **Check database path**:
+1. **Check auto-discovery inputs**:
    ```bash
-   # Verify webui.db path in job configuration
+   # Optional but recommended in .env
+   OPENWEBUI_BASE_URL=http://127.0.0.1:42004
+   OPENWEBUI_AUTH_TOKEN=<token-or-api-key>
+   OPENWEBUI_DATA_DIR=/path/to/openwebui/data
+   ```
+
+2. **Check database path**:
+   ```bash
+   # Verify inferred/override webui.db path
    ls -la /path/to/webui.db
    ```
 
-2. **Check database permissions**:
+3. **Check database permissions**:
    ```bash
    # Database must be writable
    chmod 644 /path/to/webui.db
    ```
 
-3. **Database locked**:
+4. **Database locked**:
    - Stop OpenWebUI while importing
    - Or use SQL mode instead
 
-4. **Restore from backup** if corruption occurs:
+5. **Restore from backup** if corruption occurs:
    ```bash
    # Backups are in storage/backups/
    cp storage/backups/webui_backup_<timestamp>.db /path/to/webui.db
@@ -233,6 +256,34 @@ SERVER_PORT=8788
    ```
 
 ## Docker Issues
+
+### Startup Flaps or `server` Stays Unhealthy
+
+**Problem**: `docker compose up --build -d` starts containers, but `server` flips to `unhealthy` during boot and `web` is delayed or never starts.
+
+**Root cause**:
+- On Windows bind mounts, SQLite can fail with `SQLITE_IOERR_SHMOPEN` when `better-sqlite3` initializes journal/SHM files in `/workspace/storage`.
+- The original startup also did `npm install` on every boot, which can delay health readiness on first start.
+
+**Code-level fix applied** (`docker-compose.yml`):
+- Runtime storage now uses a Docker named volume (`app_storage:/workspace/storage`) to avoid host SHM/WAL I/O issues.
+- Server/web install dependencies only when `node_modules` is missing/empty.
+- Healthcheck uses `CMD-SHELL` + `wget --spider` against `http://127.0.0.1:8787/api/health`.
+- Health timing is tuned for first boot (`start_period: 90s`, `retries: 18`, `interval: 10s`).
+- Web dev command and port mapping respect `WEB_PORT` (`${WEB_PORT:-5173}`).
+
+**Validation**:
+```bash
+docker compose up --build -d
+docker compose ps
+docker compose logs server --tail=200
+curl http://localhost:8787/api/health
+
+# confirm stable health for 2 minutes
+watch -n 10 "docker compose ps"
+```
+
+`server` should remain `healthy` for at least 12 consecutive checks (10s interval) and `web` should start only after server health is established.
 
 ### Docker Compose Build Fails
 
