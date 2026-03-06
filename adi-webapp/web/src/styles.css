@@ -157,6 +157,13 @@ nav {
   gap: 0.35rem;
 }
 
+.input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 0.6rem;
+  align-items: center;
+}
+
 .field label {
   font-size: 0.88rem;
   color: var(--muted);
@@ -249,5 +256,11 @@ td {
 @media (max-width: 760px) {
   .app-main {
     width: calc(100% - 1rem);
+  }
+}
+
+@media (max-width: 520px) {
+  .input-row {
+    grid-template-columns: 1fr;
   }
 }

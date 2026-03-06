@@ -50,6 +50,10 @@ describe("ImportWizardPage", () => {
       </MemoryRouter>,
     );
 
+    expect(
+      screen.getByText(/converts ChatGPT, Claude, Grok, or AI Studio exports into OpenWebUI-style JSON/i),
+    ).toBeTruthy();
+
     await user.click(screen.getByRole("button", { name: "Next" }));
     await user.type(screen.getByLabelText("Paths (one per line)"), "C:\\exports\\chat-1.json");
 
@@ -181,6 +185,7 @@ describe("ImportWizardPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Next" }));
     await user.selectOptions(screen.getByLabelText("Import Mode"), "direct_db");
+    expect(screen.getByText(/Both modes run conversion first and keep preview artifacts/i)).toBeTruthy();
     await user.type(screen.getByLabelText("Target webui.db path override (optional)"), "C:\\open-webui\\webui.db");
     await user.type(screen.getByLabelText("Type CONFIRM_DB_WRITE"), "CONFIRM_DB_WRITE");
 

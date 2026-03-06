@@ -10,11 +10,16 @@ services:
     environment:
       PYTHON_BIN: python3
       IMPORTER_ROOT: /importer-scripts
+      PATH_MAPPING: ${PATH_MAPPING:-C:/pinokio;/pinokio}
+      OPENWEBUI_DISCOVERY_URLS: ${OPENWEBUI_DISCOVERY_URLS:-http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080}
+      OPENWEBUI_DATA_DIR: ${OPENWEBUI_DATA_DIR:-/pinokio/api/OpenWebUI/app/env/Lib/site-packages/open_webui/data}
+      OPENWEBUI_PINOKIO_ROOT: ${OPENWEBUI_PINOKIO_ROOT:-/pinokio}
     volumes:
       - ./:/workspace
       - ../openwebui-importer:/importer-scripts:ro
       - server_node_modules:/workspace/server/node_modules
       - app_storage:/workspace/storage
+      - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:ro"
     ports:
       - "8787:8787"
     extra_hosts:

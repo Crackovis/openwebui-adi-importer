@@ -21,7 +21,11 @@ import { createJobLogService } from "./services/job-log-service";
 import { createJobRunner } from "./services/job-runner";
 import { createPrecheckService } from "./services/precheck-service";
 import { createPythonAdapter } from "./services/python-adapter";
+import { createRuntimeSettingsResolver } from "./services/runtime-settings";
 import { createSqlOrchestrator } from "./services/sql-orchestrator";
+
+const ABSOLUTE_UPLOAD_FILE_SIZE_LIMIT_BYTES = 1_073_741_824;
+const ABSOLUTE_UPLOAD_FILES_LIMIT = 1_000;
 
 const startServer = async (): Promise<void> => {
   const env = loadEnv();
@@ -30,6 +34,7 @@ const startServer = async (): Promise<void> => {
   const db = createDbClient(env.appDbPath);
   const jobsRepository = createJobsRepository(db);
   const settingsRepository = createSettingsRepository(db);
+  const getRuntimeSettings = createRuntimeSettingsResolver(env, settingsRepository);
   const jobLogService = createJobLogService(jobsRepository);
   const jobStateMachine = createJobStateMachine({
     jobsRepository,
@@ -37,15 +42,21 @@ const startServer = async (): Promise<void> => {
   });
 
   const pythonAdapter = createPythonAdapter({
-    pythonBin: env.pythonBin,
-    importerRoot: env.importerRoot,
-    timeoutMs: env.subprocessTimeoutMs,
+    getRuntimeOptions: () => {
+      const runtimeSettings = getRuntimeSettings();
+      return {
+        pythonBin: runtimeSettings.pythonBin,
+        importerRoot: runtimeSettings.importerRoot,
+        timeoutMs: runtimeSettings.subprocessTimeoutMs,
+      };
+    },
     pathMapping: env.pathMapping,
   });
 
   const precheckService = createPrecheckService({
     env,
     pythonAdapter,
+    getRuntimeSettings,
   });
   const conversionOrchestrator = createConversionOrchestrator({
     pythonAdapter,
@@ -78,18 +89,19 @@ const startServer = async (): Promise<void> => {
 
   await app.register(multipart, {
     limits: {
-      fileSize: env.maxInputTotalBytes,
-      files: env.maxInputFiles,
+      fileSize: Math.max(env.maxInputTotalBytes, ABSOLUTE_UPLOAD_FILE_SIZE_LIMIT_BYTES),
+      files: Math.max(env.maxInputFiles, ABSOLUTE_UPLOAD_FILES_LIMIT),
     },
   });
 
   registerHealthRoute(app, { env });
   registerSettingsRoute(app, {
-    env,
     settingsRepository,
+    getRuntimeSettings,
   });
   registerUploadRoute(app, {
     uploadsDir: env.uploadsDir,
+    getRuntimeSettings,
   });
   registerOpenWebUiDiscoveryRoute(app, {
     precheckService,

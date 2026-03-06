@@ -102,6 +102,7 @@ describe("JobDetailPage", () => {
     expect(await screen.findByText(/User ID:\s*user-42/i)).toBeTruthy();
     expect(await screen.findByText("Stored timeline log")).toBeTruthy();
     expect(await screen.findByText("Live stream log entry")).toBeTruthy();
+    expect(await screen.findByText(/Conversion runs before SQL\/direct DB steps/i)).toBeTruthy();
     expect(await screen.findByText("Download SQL Artifact")).toBeTruthy();
   });
 });

@@ -35,9 +35,14 @@ type SpawnDeps = {
 };
 
 export type PythonAdapterOptions = {
-  pythonBin: string;
-  importerRoot: string;
-  timeoutMs: number;
+  pythonBin?: string;
+  importerRoot?: string;
+  timeoutMs?: number;
+  getRuntimeOptions?: () => {
+    pythonBin: string;
+    importerRoot: string;
+    timeoutMs: number;
+  };
   pathMapping?: Array<{ host: string; container: string }>;
 } & SpawnDeps;
 
@@ -157,12 +162,34 @@ export const createPythonAdapter = (options: PythonAdapterOptions): PythonAdapte
   const spawnProcess = options.spawnProcess ?? spawn;
   const pathMapping = options.pathMapping ?? [];
 
+  const resolveRuntimeOptions = (): {
+    pythonBin: string;
+    importerRoot: string;
+    timeoutMs: number;
+  } => {
+    if (options.getRuntimeOptions) {
+      return options.getRuntimeOptions();
+    }
+
+    if (!options.pythonBin || !options.importerRoot || !options.timeoutMs) {
+      throw new Error("Python adapter runtime options are not configured.");
+    }
+
+    return {
+      pythonBin: options.pythonBin,
+      importerRoot: options.importerRoot,
+      timeoutMs: options.timeoutMs,
+    };
+  };
+
   const probePython = (): Promise<ProcessResult> => {
-    return runCommand(options.pythonBin, ["--version"], options.timeoutMs, spawnProcess);
+    const runtimeOptions = resolveRuntimeOptions();
+    return runCommand(runtimeOptions.pythonBin, ["--version"], runtimeOptions.timeoutMs, spawnProcess);
   };
 
   const runConverter = async (input: RunConverterInput): Promise<ProcessResult> => {
-    const scriptPath = getConverterScriptPath(options.importerRoot, input.source);
+    const runtimeOptions = resolveRuntimeOptions();
+    const scriptPath = getConverterScriptPath(runtimeOptions.importerRoot, input.source);
     const translatedFiles = input.files.map(f => translateHostPathToContainer(f, pathMapping));
     const translatedOutputDir = translateHostPathToContainer(input.outputDir, pathMapping);
     
@@ -174,21 +201,23 @@ export const createPythonAdapter = (options: PythonAdapterOptions): PythonAdapte
       translatedOutputDir,
       ...translatedFiles,
     ];
-    return runCommand(options.pythonBin, args, options.timeoutMs, spawnProcess);
+    return runCommand(runtimeOptions.pythonBin, args, runtimeOptions.timeoutMs, spawnProcess);
   };
 
   const runCreateSql = async (input: RunCreateSqlInput): Promise<ProcessResult> => {
-    const scriptPath = getCreateSqlScriptPath(options.importerRoot);
+    const runtimeOptions = resolveRuntimeOptions();
+    const scriptPath = getCreateSqlScriptPath(runtimeOptions.importerRoot);
     const translatedInputs = input.inputs.map(f => translateHostPathToContainer(f, pathMapping));
     const translatedOutputFile = translateHostPathToContainer(input.outputFile, pathMapping);
     
     const tagsArg = input.tags.join(",");
     const args = [scriptPath, ...translatedInputs, "--tags", tagsArg, "--output", translatedOutputFile];
-    return runCommand(options.pythonBin, args, options.timeoutMs, spawnProcess);
+    return runCommand(runtimeOptions.pythonBin, args, runtimeOptions.timeoutMs, spawnProcess);
   };
 
   const runBatch = async (input: RunBatchInput): Promise<ProcessResult> => {
-    const scriptPath = getBatchScriptPath(options.importerRoot);
+    const runtimeOptions = resolveRuntimeOptions();
+    const scriptPath = getBatchScriptPath(runtimeOptions.importerRoot);
     const translatedInputDir = translateHostPathToContainer(input.inputDir, pathMapping);
     const translatedOutputDir = translateHostPathToContainer(input.outputDir, pathMapping);
     const translatedSqlOutput = input.sqlOutput ? translateHostPathToContainer(input.sqlOutput, pathMapping) : undefined;
@@ -207,7 +236,7 @@ export const createPythonAdapter = (options: PythonAdapterOptions): PythonAdapte
     if (translatedSqlOutput) {
       args.push("--sql-output", translatedSqlOutput);
     }
-    return runCommand(options.pythonBin, args, options.timeoutMs, spawnProcess);
+    return runCommand(runtimeOptions.pythonBin, args, runtimeOptions.timeoutMs, spawnProcess);
   };
 
   return {

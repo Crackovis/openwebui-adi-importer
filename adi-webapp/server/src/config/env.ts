@@ -28,6 +28,7 @@ const envSchema = z.object({
   OPENWEBUI_DISCOVERY_URLS: z.string().optional(),
   OPENWEBUI_DATA_DIR: z.string().optional(),
   OPENWEBUI_DATABASE_URL: z.string().optional(),
+  OPENWEBUI_PINOKIO_ROOT: z.string().optional(),
   OPENWEBUI_AUTH_TOKEN: z.string().optional(),
   OPENWEBUI_API_KEY: z.string().optional(),
   OPENWEBUI_DISCOVERY_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
@@ -55,6 +56,7 @@ export type EnvConfig = {
   openWebUiDiscoveryUrls: string[];
   openWebUiDataDir?: string;
   openWebUiDatabaseUrl?: string;
+  openWebUiPinokioRoot?: string;
   openWebUiAuthToken?: string;
   openWebUiApiKey?: string;
   openWebUiDiscoveryTimeoutMs: number;
@@ -144,6 +146,7 @@ export const loadEnv = (): EnvConfig => {
     openWebUiDiscoveryUrls: parseCsv(parsed.OPENWEBUI_DISCOVERY_URLS),
     openWebUiDataDir: parsed.OPENWEBUI_DATA_DIR?.trim() || undefined,
     openWebUiDatabaseUrl: parsed.OPENWEBUI_DATABASE_URL?.trim() || undefined,
+    openWebUiPinokioRoot: parsed.OPENWEBUI_PINOKIO_ROOT?.trim() || undefined,
     openWebUiAuthToken: parsed.OPENWEBUI_AUTH_TOKEN?.trim() || undefined,
     openWebUiApiKey: parsed.OPENWEBUI_API_KEY?.trim() || undefined,
     openWebUiDiscoveryTimeoutMs: parsed.OPENWEBUI_DISCOVERY_TIMEOUT_MS,

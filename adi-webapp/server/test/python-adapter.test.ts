@@ -83,4 +83,48 @@ describe("createPythonAdapter", () => {
       code: "PROCESS_EXIT_NON_ZERO",
     });
   });
+
+  it("uses dynamic runtime options when provided", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runtime = {
+      pythonBin: "python-a",
+      importerRoot: "/opt/importer-a",
+      timeoutMs: 1000,
+    };
+
+    const spawnProcess = vi.fn((command: string, args: string[]) => {
+      calls.push({ command, args });
+      const child = createMockChildProcess();
+      process.nextTick(() => {
+        child.emit("close", 0);
+      });
+      return child as unknown as ReturnType<typeof import("node:child_process").spawn>;
+    });
+
+    const adapter = createPythonAdapter({
+      getRuntimeOptions: () => runtime,
+      spawnProcess: spawnProcess as unknown as typeof import("node:child_process").spawn,
+    });
+
+    await adapter.runConverter({
+      source: "chatgpt",
+      files: ["/tmp/chat-1.json"],
+      userId: "user-1",
+      outputDir: "/tmp/out",
+    });
+
+    runtime.pythonBin = "python-b";
+    runtime.importerRoot = "/opt/importer-b";
+
+    await adapter.runCreateSql({
+      inputs: ["/tmp/chat-1.json"],
+      outputFile: "/tmp/out.sql",
+      tags: ["imported-chatgpt"],
+    });
+
+    expect(calls[0]?.command).toBe("python-a");
+    expect(calls[0]?.args[0]).toContain("importer-a");
+    expect(calls[1]?.command).toBe("python-b");
+    expect(calls[1]?.args[0]).toContain("importer-b");
+  });
 });

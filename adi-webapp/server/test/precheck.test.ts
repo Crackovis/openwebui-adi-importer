@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EnvConfig } from "../src/config/env";
 import { createPrecheckService } from "../src/services/precheck-service";
@@ -29,6 +30,7 @@ const createTestEnv = (rootDir: string): EnvConfig => {
     openWebUiDiscoveryUrls: [],
     openWebUiDataDir: undefined,
     openWebUiDatabaseUrl: undefined,
+    openWebUiPinokioRoot: undefined,
     openWebUiAuthToken: undefined,
     openWebUiApiKey: undefined,
     openWebUiDiscoveryTimeoutMs: 1000,
@@ -58,11 +60,26 @@ const createPythonAdapterMock = (): PythonAdapter => {
   };
 };
 
-const createFetchResponse = (ok: boolean, payload: unknown): Response => {
+const createFetchResponse = (ok: boolean, payload: unknown, status?: number): Response => {
   return {
     ok,
+    status: status ?? (ok ? 200 : 500),
     json: async () => payload,
   } as Response;
+};
+
+const createOpenWebUiDb = (dbPath: string, users: Array<{ id: string; role?: string }>): void => {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const db = new Database(dbPath);
+  try {
+    db.exec('CREATE TABLE "user" (id TEXT PRIMARY KEY, role TEXT)');
+    const insert = db.prepare('INSERT INTO "user" (id, role) VALUES (?, ?)');
+    for (const user of users) {
+      insert.run(user.id, user.role ?? null);
+    }
+  } finally {
+    db.close();
+  }
 };
 
 describe("createPrecheckService", () => {
@@ -100,6 +117,85 @@ describe("createPrecheckService", () => {
       expect(result.resolvedInputFiles).toEqual([inputFile]);
       expect(result.issues).toEqual([]);
       expect(pythonAdapter.probePython).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses runtime settings override for max input bytes", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-runtime-bytes-"));
+    try {
+      const env = createTestEnv(rootDir);
+      env.maxInputTotalBytes = 10;
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, JSON.stringify({ message: "this payload exceeds ten bytes" }), "utf8");
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+        getRuntimeSettings: () => ({
+          pythonBin: env.pythonBin,
+          importerRoot: env.importerRoot,
+          maxInputFiles: env.maxInputFiles,
+          maxInputTotalBytes: 1024 * 1024,
+          subprocessTimeoutMs: env.subprocessTimeoutMs,
+        }),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        userId: "runtime-user",
+        mode: "sql",
+        tags: [],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.issues.some((issue) => issue.code === "INPUT_TOO_LARGE")).toBe(false);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses runtime settings override for importer root", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-runtime-importer-"));
+    try {
+      const env = createTestEnv(rootDir);
+      const runtimeImporterRoot = path.join(rootDir, "runtime-importer");
+      writeImporterScripts(runtimeImporterRoot);
+      env.importerRoot = path.join(rootDir, "missing-importer");
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+        getRuntimeSettings: () => ({
+          pythonBin: env.pythonBin,
+          importerRoot: runtimeImporterRoot,
+          maxInputFiles: env.maxInputFiles,
+          maxInputTotalBytes: env.maxInputTotalBytes,
+          subprocessTimeoutMs: env.subprocessTimeoutMs,
+        }),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        userId: "runtime-user",
+        mode: "sql",
+        tags: [],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.checks.scriptPaths).toBe(true);
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
     }
@@ -224,7 +320,7 @@ describe("createPrecheckService", () => {
       const openWebUiDataDir = path.join(rootDir, "openwebui-data");
       fs.mkdirSync(openWebUiDataDir, { recursive: true });
       const inferredDbPath = path.join(openWebUiDataDir, "webui.db");
-      fs.writeFileSync(inferredDbPath, "sqlite", "utf8");
+      createOpenWebUiDb(inferredDbPath, [{ id: "direct-db-user", role: "admin" }]);
       env.openWebUiDataDir = openWebUiDataDir;
 
       const service = createPrecheckService({
@@ -243,6 +339,77 @@ describe("createPrecheckService", () => {
 
       expect(result.ok).toBe(true);
       expect(result.resolvedDbPath).toBe(inferredDbPath);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports actionable issue when inferred direct_db path is not a valid SQLite file", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-invalid-"));
+    try {
+      const env = createTestEnv(rootDir);
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const openWebUiDataDir = path.join(rootDir, "openwebui-data");
+      fs.mkdirSync(openWebUiDataDir, { recursive: true });
+      const invalidDbPath = path.join(openWebUiDataDir, "webui.db");
+      fs.writeFileSync(invalidDbPath, "not-a-sqlite-db", "utf8");
+      env.openWebUiDataDir = openWebUiDataDir;
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        userId: "explicit-user",
+        mode: "direct_db",
+        tags: [],
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.issues.some((issue) => issue.code === "DB_FILE_INVALID")).toBe(true);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns DB_PATH_UNRESOLVED diagnostic when direct_db path cannot be discovered", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-unresolved-"));
+    try {
+      const env = createTestEnv(rootDir);
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        userId: "explicit-user",
+        mode: "direct_db",
+        tags: [],
+      });
+
+      const dbPathIssue = result.issues.find((issue) => issue.code === "DB_PATH_UNRESOLVED");
+
+      expect(result.ok).toBe(false);
+      expect(dbPathIssue).toBeDefined();
+      expect(dbPathIssue?.message).toContain("Provide dbPath explicitly");
     } finally {
       fs.rmSync(rootDir, { recursive: true, force: true });
     }
@@ -284,6 +451,124 @@ describe("createPrecheckService", () => {
     }
   });
 
+  it("falls back to OpenWebUI database identity when auth endpoint is unauthorized", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-identity-"));
+    try {
+      const env = createTestEnv(rootDir);
+      env.openWebUiDiscoveryUrls = ["http://candidate-1:3000"];
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const openWebUiDataDir = path.join(rootDir, "openwebui-data");
+      const dbPath = path.join(openWebUiDataDir, "webui.db");
+      createOpenWebUiDb(dbPath, [{ id: "db-admin-user", role: "admin" }]);
+      env.openWebUiDataDir = openWebUiDataDir;
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createFetchResponse(false, {}, 401)));
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        mode: "sql",
+        tags: [],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.resolvedUserId).toBe("db-admin-user");
+      expect(result.resolvedOpenWebUiBaseUrl).toBe("http://candidate-1:3000");
+      expect(result.resolvedDbPath).toBe(dbPath);
+      expect(result.checks.userIdPresent).toBe(true);
+      expect(result.issues).toEqual([]);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports ambiguous user identity when DB fallback finds multiple users", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-ambiguous-"));
+    try {
+      const env = createTestEnv(rootDir);
+      env.openWebUiDiscoveryUrls = ["http://candidate-1:3000"];
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const openWebUiDataDir = path.join(rootDir, "openwebui-data");
+      const dbPath = path.join(openWebUiDataDir, "webui.db");
+      createOpenWebUiDb(dbPath, [
+        { id: "user-a", role: "user" },
+        { id: "user-b", role: "user" },
+      ]);
+      env.openWebUiDataDir = openWebUiDataDir;
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createFetchResponse(false, {}, 401)));
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        mode: "sql",
+        tags: [],
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.resolvedOpenWebUiBaseUrl).toBe("http://candidate-1:3000");
+      expect(result.resolvedDbPath).toBe(dbPath);
+      expect(result.issues.some((issue) => issue.code === "USER_ID_AMBIGUOUS")).toBe(true);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns reachable OpenWebUI base URL during discovery when identity is resolved from DB fallback", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-discovery-db-fallback-url-"));
+    try {
+      const env = createTestEnv(rootDir);
+      env.openWebUiDiscoveryUrls = ["http://candidate-1:3000"];
+      writeImporterScripts(env.importerRoot);
+
+      const openWebUiDataDir = path.join(rootDir, "openwebui-data");
+      const dbPath = path.join(openWebUiDataDir, "webui.db");
+      createOpenWebUiDb(dbPath, [{ id: "db-admin-user", role: "admin" }]);
+      env.openWebUiDataDir = openWebUiDataDir;
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createFetchResponse(false, {}, 401)));
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.discoverOpenWebUi({
+        mode: "sql",
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.resolvedUserId).toBe("db-admin-user");
+      expect(result.resolvedOpenWebUiBaseUrl).toBe("http://candidate-1:3000");
+      expect(result.resolvedDbPath).toBe(dbPath);
+      expect(result.issues).toEqual([]);
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("discovers OpenWebUI identity through discovery endpoint service method", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-discovery-identity-"));
     try {
@@ -320,7 +605,7 @@ describe("createPrecheckService", () => {
       const openWebUiDataDir = path.join(rootDir, "openwebui-data");
       fs.mkdirSync(openWebUiDataDir, { recursive: true });
       const inferredDbPath = path.join(openWebUiDataDir, "webui.db");
-      fs.writeFileSync(inferredDbPath, "sqlite", "utf8");
+      createOpenWebUiDb(inferredDbPath, [{ id: "discovery-user", role: "admin" }]);
 
       const service = createPrecheckService({
         env,

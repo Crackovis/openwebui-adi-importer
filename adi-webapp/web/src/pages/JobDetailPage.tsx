@@ -183,6 +183,9 @@ export const JobDetailPage = (): JSX.Element => {
 
           <div className="panel">
             <h3>Outputs</h3>
+            <p style={{ color: "#a8b4c7" }}>
+              Conversion runs before SQL/direct DB steps and writes OpenWebUI-style JSON artifacts.
+            </p>
             <p>Converted count: {job.output?.convertedCount ?? 0}</p>
             <p>Preview path: {job.output?.previewPath ?? "-"}</p>
             <p>Backup path: {job.output?.backupPath ?? "-"}</p>

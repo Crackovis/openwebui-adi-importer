@@ -5,6 +5,7 @@ Understanding the two import modes and how to use them safely.
 ## Table of Contents
 
 - [Import Modes Overview](#import-modes-overview)
+- [Importer Core Capabilities](#importer-core-capabilities)
 - [SQL Mode](#sql-mode)
 - [Direct DB Mode](#direct-db-mode)
 - [Backup and Restore](#backup-and-restore)
@@ -19,11 +20,25 @@ ADI Importer supports two import modes:
 | **SQL Mode** | Review before import, manual control | Highest | Requires manual execution |
 | **Direct DB** | Automated imports, trusted sources | High (with backups) | Automatic |
 
+Both modes share the same conversion pipeline first, then diverge at execution time.
+
+## Importer Core Capabilities
+
+The bundled `openwebui-importer` scripts provide capabilities beyond SQL generation:
+
+- **Multi-source conversion**: `convert_chatgpt.py`, `convert_claude.py`, `convert_grok.py`, and `convert_aistudio.py` convert source exports into OpenWebUI-style JSON.
+- **Sanitization**: Converter scripts remove private-use Unicode characters from message text.
+- **Deterministic output layout**: Converted files are written to per-source subdirectories under the selected output directory.
+- **Batch helper**: `scripts/run_batch.py` can process a full input directory and can run conversion-only when `--sql-output` is omitted.
+- **SQL generation behavior**: `create_sql.py` supports JSON files or directories, upserts tags, and deletes existing chat rows with matching IDs before reinserting.
+
 ## SQL Mode
 
 ### Overview
 
 SQL Mode generates a SQL file containing all INSERT statements needed to import your conversations. You review and execute the SQL manually.
+
+Before SQL is generated, source exports are converted into OpenWebUI-style JSON artifacts.
 
 ### Workflow
 
@@ -93,6 +108,8 @@ Some OpenWebUI deployments provide database access via admin console.
 ### Overview
 
 Direct DB Mode automatically imports conversations directly into your OpenWebUI database. Includes automatic backups and safety checks.
+
+Direct DB mode still runs the same conversion pipeline first, then applies generated SQL in a controlled execution step.
 
 ### Workflow
 
@@ -191,10 +208,15 @@ Optional override settings:
 OPENWEBUI_BASE_URL=
 OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
 OPENWEBUI_DATA_DIR=
+OPENWEBUI_PINOKIO_ROOT=/pinokio
 OPENWEBUI_DATABASE_URL=
 OPENWEBUI_AUTH_TOKEN=
 OPENWEBUI_API_KEY=
+PATH_MAPPING=C:/pinokio;/pinokio
+PINOKIO_HOST_ROOT=C:/pinokio
 ```
+
+When OpenWebUI auth returns `401`, discovery can still resolve `userId` from `webui.db` and report the first reachable OpenWebUI URL candidate in `Resolved OpenWebUI URL`.
 
 ## Backup and Restore
 

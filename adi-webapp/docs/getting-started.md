@@ -126,11 +126,22 @@ SSE_HEARTBEAT_MS=10000               # 10 second SSE heartbeat
 OPENWEBUI_BASE_URL=
 OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
 OPENWEBUI_DATA_DIR=
+OPENWEBUI_PINOKIO_ROOT=/pinokio
 OPENWEBUI_DATABASE_URL=
 OPENWEBUI_AUTH_TOKEN=
 OPENWEBUI_API_KEY=
 OPENWEBUI_DISCOVERY_TIMEOUT_MS=3000
+
+# Optional host-to-container mapping and Docker mount root
+PATH_MAPPING=C:/pinokio;/pinokio
+PINOKIO_HOST_ROOT=C:/pinokio
 ```
+
+Runtime limits can also be changed from `http://localhost:5173/settings`.
+For new uploads and jobs, changes are applied immediately (no server restart required).
+
+- `Max Input Files (count)` = file count limit
+- `Max Input Size (bytes)` = byte limit (UI also shows MiB for readability)
 
 ### Storage Directories
 

@@ -230,6 +230,10 @@ export const ImportWizardPage = (): JSX.Element => {
       <div className="panel">
         <h2>Import Wizard</h2>
         <p>Guide each import from source selection to safe execution.</p>
+        <p style={{ marginTop: "0.5rem", color: "#a8b4c7" }}>
+          The pipeline first converts ChatGPT, Claude, Grok, or AI Studio exports into OpenWebUI-style JSON, then
+          continues with SQL generation or direct DB import.
+        </p>
       </div>
 
       <div className="panel">
@@ -412,6 +416,11 @@ export const ImportWizardPage = (): JSX.Element => {
 
         {step === 3 ? (
           <div className="form-grid">
+            <div className="field" style={{ gridColumn: "1 / -1" }}>
+              <small style={{ color: "#a8b4c7" }}>
+                Both modes run conversion first and keep preview artifacts for inspection.
+              </small>
+            </div>
             <div className="field">
               <label htmlFor="mode">Import Mode</label>
               <select

@@ -160,6 +160,7 @@ SERVER_PORT=8788
    docker compose exec -T server wget -S -O - http://host.docker.internal:42004/api/v1/auths/
    ```
    A `401` here means networking works and credentials are the missing piece.
+   If `webui.db` is readable in the container, discovery can still resolve `userId` via DB fallback and report a reachable URL in `Resolved OpenWebUI URL`.
 
 ### Conversion Failed
 
@@ -207,25 +208,36 @@ SERVER_PORT=8788
    OPENWEBUI_BASE_URL=http://127.0.0.1:42004
    OPENWEBUI_AUTH_TOKEN=<token-or-api-key>
    OPENWEBUI_DATA_DIR=/path/to/openwebui/data
+   OPENWEBUI_PINOKIO_ROOT=/pinokio
+   PATH_MAPPING=C:/pinokio;/pinokio
+   PINOKIO_HOST_ROOT=C:/pinokio
    ```
 
-2. **Check database path**:
+2. **If running Docker on Windows + Pinokio, mount Pinokio into the server container**:
+   ```yaml
+   services:
+     server:
+       volumes:
+          - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:ro"
+   ```
+
+3. **Check database path**:
    ```bash
    # Verify inferred/override webui.db path
    ls -la /path/to/webui.db
    ```
 
-3. **Check database permissions**:
+4. **Check database permissions**:
    ```bash
    # Database must be writable
    chmod 644 /path/to/webui.db
    ```
 
-4. **Database locked**:
-   - Stop OpenWebUI while importing
-   - Or use SQL mode instead
+5. **Database locked**:
+    - Stop OpenWebUI while importing
+    - Or use SQL mode instead
 
-5. **Restore from backup** if corruption occurs:
+6. **Restore from backup** if corruption occurs:
    ```bash
    # Backups are in storage/backups/
    cp storage/backups/webui_backup_<timestamp>.db /path/to/webui.db

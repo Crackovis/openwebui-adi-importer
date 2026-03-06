@@ -12,7 +12,7 @@ import type { PrecheckService } from "../src/services/precheck-service";
 import type { ConversionOrchestrator } from "../src/services/conversion-orchestrator";
 import type { SqlOrchestrator } from "../src/services/sql-orchestrator";
 import type { DbBackupService } from "../src/services/db-backup-service";
-import type { DbImportService } from "../src/services/db-import-service";
+import { DbImportError, type DbImportService } from "../src/services/db-import-service";
 
 const createTestEnv = (rootDir: string): EnvConfig => {
   return {
@@ -37,6 +37,7 @@ const createTestEnv = (rootDir: string): EnvConfig => {
     openWebUiDiscoveryUrls: [],
     openWebUiDataDir: undefined,
     openWebUiDatabaseUrl: undefined,
+    openWebUiPinokioRoot: undefined,
     openWebUiAuthToken: undefined,
     openWebUiApiKey: undefined,
     openWebUiDiscoveryTimeoutMs: 1000,
@@ -365,5 +366,215 @@ describe("SQL mode integration", () => {
     expect(persistedInput?.userId).toBe("resolved-user");
     expect(persistedInput?.dbPath).toBe(resolvedDbPath);
     expect(job?.status).toBe("completed");
+  });
+
+  it("surfaces DB_IMPORT_DB_BUSY diagnostic in direct_db failure state", async () => {
+    const jobId = "job-direct-db-busy";
+    createQueuedJob(jobsRepository, jobId);
+
+    const env = createTestEnv(rootDir);
+    const jobLogService = createJobLogService(jobsRepository);
+    const jobStateMachine = createJobStateMachine({
+      jobsRepository,
+      jobLogService,
+    });
+
+    const resolvedDbPath = path.join(rootDir, "openwebui", "webui.db");
+
+    const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
+      run: vi.fn().mockResolvedValue({
+        ok: true,
+        checks: {
+          pythonAvailable: true,
+          scriptPaths: true,
+          inputsReadable: true,
+          extensionsValid: true,
+          userIdPresent: true,
+          outputWritable: true,
+        },
+        resolvedUserId: "resolved-user",
+        resolvedDbPath,
+        resolvedInputFiles: [path.join(rootDir, "inputs", "chat-1.json")],
+        fileCount: 1,
+        totalBytes: 20,
+        issues: [],
+      }),
+    };
+
+    const conversionOrchestrator: ConversionOrchestrator = {
+      run: vi.fn().mockResolvedValue({
+        effectiveTags: ["imported-chatgpt"],
+        convertedFiles: [path.join(rootDir, "normalized", "chat-1.json")],
+        failedFiles: [],
+        convertedCount: 1,
+        normalizedDir: path.join(rootDir, "normalized"),
+        rawOutputDir: path.join(rootDir, "raw", "chatgpt"),
+        preview: {
+          previewPath: path.join(rootDir, "preview", "job-direct-db-busy.preview.json"),
+          data: {
+            conversationCount: 1,
+            sampleTitles: ["Sample"],
+            sampleMessages: [{ title: "Sample", snippet: "Hello" }],
+            effectiveTags: ["imported-chatgpt"],
+            generatedAt: new Date("2026-03-05T12:00:00.000Z").toISOString(),
+          },
+        },
+      }),
+    };
+
+    const sqlOrchestrator: SqlOrchestrator = {
+      generate: vi.fn().mockResolvedValue({
+        sqlPath: path.join(rootDir, "sql", "job-direct-db-busy.sql"),
+        stdout: "ok",
+        stderr: "",
+      }),
+    };
+
+    const dbBackupService: DbBackupService = {
+      createBackup: vi.fn().mockReturnValue(path.join(rootDir, "backups", "job-direct-db-busy.sqlite")),
+    };
+    const dbImportService: DbImportService = {
+      applySql: vi.fn().mockImplementation(() => {
+        throw new DbImportError("DB_IMPORT_DB_BUSY", "Target database is busy.");
+      }),
+      expectedConfirmationText: "CONFIRM_DB_WRITE",
+    };
+
+    const jobRunner = createJobRunner({
+      env,
+      jobsRepository,
+      jobStateMachine,
+      jobLogService,
+      precheckService,
+      conversionOrchestrator,
+      sqlOrchestrator,
+      dbBackupService,
+      dbImportService,
+    });
+
+    await jobRunner.runNow({
+      jobId,
+      source: "chatgpt",
+      mode: "direct_db",
+      inputMode: "files",
+      inputPaths: [path.join(rootDir, "inputs", "chat-1.json")],
+      userId: "request-user",
+      tags: [],
+      confirmationText: "CONFIRM_DB_WRITE",
+    });
+
+    const job = jobsRepository.getJobById(jobId);
+    const output = jobsRepository.getJobOutput(jobId);
+
+    expect(job?.status).toBe("failed_db");
+    expect(job?.error).toBe("DB_IMPORT_DB_BUSY: Target database is busy.");
+    expect(dbBackupService.createBackup).toHaveBeenCalledWith(resolvedDbPath, jobId);
+    expect(output?.appliedToDb).toBe(0);
+  });
+
+  it("surfaces DB_IMPORT_READONLY diagnostic in direct_db failure state", async () => {
+    const jobId = "job-direct-db-readonly";
+    createQueuedJob(jobsRepository, jobId);
+
+    const env = createTestEnv(rootDir);
+    const jobLogService = createJobLogService(jobsRepository);
+    const jobStateMachine = createJobStateMachine({
+      jobsRepository,
+      jobLogService,
+    });
+
+    const resolvedDbPath = path.join(rootDir, "openwebui", "webui.db");
+
+    const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
+      run: vi.fn().mockResolvedValue({
+        ok: true,
+        checks: {
+          pythonAvailable: true,
+          scriptPaths: true,
+          inputsReadable: true,
+          extensionsValid: true,
+          userIdPresent: true,
+          outputWritable: true,
+        },
+        resolvedUserId: "resolved-user",
+        resolvedDbPath,
+        resolvedInputFiles: [path.join(rootDir, "inputs", "chat-1.json")],
+        fileCount: 1,
+        totalBytes: 20,
+        issues: [],
+      }),
+    };
+
+    const conversionOrchestrator: ConversionOrchestrator = {
+      run: vi.fn().mockResolvedValue({
+        effectiveTags: ["imported-chatgpt"],
+        convertedFiles: [path.join(rootDir, "normalized", "chat-1.json")],
+        failedFiles: [],
+        convertedCount: 1,
+        normalizedDir: path.join(rootDir, "normalized"),
+        rawOutputDir: path.join(rootDir, "raw", "chatgpt"),
+        preview: {
+          previewPath: path.join(rootDir, "preview", "job-direct-db-readonly.preview.json"),
+          data: {
+            conversationCount: 1,
+            sampleTitles: ["Sample"],
+            sampleMessages: [{ title: "Sample", snippet: "Hello" }],
+            effectiveTags: ["imported-chatgpt"],
+            generatedAt: new Date("2026-03-05T12:00:00.000Z").toISOString(),
+          },
+        },
+      }),
+    };
+
+    const sqlOrchestrator: SqlOrchestrator = {
+      generate: vi.fn().mockResolvedValue({
+        sqlPath: path.join(rootDir, "sql", "job-direct-db-readonly.sql"),
+        stdout: "ok",
+        stderr: "",
+      }),
+    };
+
+    const dbBackupService: DbBackupService = {
+      createBackup: vi.fn().mockReturnValue(path.join(rootDir, "backups", "job-direct-db-readonly.sqlite")),
+    };
+    const dbImportService: DbImportService = {
+      applySql: vi.fn().mockImplementation(() => {
+        throw new DbImportError("DB_IMPORT_READONLY", "Target database is read-only.");
+      }),
+      expectedConfirmationText: "CONFIRM_DB_WRITE",
+    };
+
+    const jobRunner = createJobRunner({
+      env,
+      jobsRepository,
+      jobStateMachine,
+      jobLogService,
+      precheckService,
+      conversionOrchestrator,
+      sqlOrchestrator,
+      dbBackupService,
+      dbImportService,
+    });
+
+    await jobRunner.runNow({
+      jobId,
+      source: "chatgpt",
+      mode: "direct_db",
+      inputMode: "files",
+      inputPaths: [path.join(rootDir, "inputs", "chat-1.json")],
+      userId: "request-user",
+      tags: [],
+      confirmationText: "CONFIRM_DB_WRITE",
+    });
+
+    const job = jobsRepository.getJobById(jobId);
+    const output = jobsRepository.getJobOutput(jobId);
+
+    expect(job?.status).toBe("failed_db");
+    expect(job?.error).toBe("DB_IMPORT_READONLY: Target database is read-only.");
+    expect(dbBackupService.createBackup).toHaveBeenCalledWith(resolvedDbPath, jobId);
+    expect(output?.appliedToDb).toBe(0);
   });
 });

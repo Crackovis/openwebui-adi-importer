@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import type { EnvConfig } from "../config/env";
 import {
   collectDirectoryFiles,
@@ -19,6 +20,7 @@ import {
   isJobSource,
 } from "./script-registry";
 import type { PythonAdapter } from "./python-adapter";
+import type { RuntimeSettings } from "./runtime-settings";
 import {
   openWebUiDiscoveryRequestSchema,
   precheckRequestSchema,
@@ -31,6 +33,7 @@ import {
 type PrecheckServiceDeps = {
   env: EnvConfig;
   pythonAdapter: PythonAdapter;
+  getRuntimeSettings?: () => RuntimeSettings;
 };
 
 type InputStats = {
@@ -41,6 +44,7 @@ type InputStats = {
 type IdentityResolution = {
   resolvedUserId?: string;
   resolvedOpenWebUiBaseUrl?: string;
+  resolvedDbPath?: string;
 };
 
 type DbResolution = {
@@ -49,7 +53,7 @@ type DbResolution = {
 
 type OpenWebUiResolutionRequest = Pick<
   PrecheckRequest,
-  "userId" | "openWebUiBaseUrl" | "openWebUiAuthToken" | "openWebUiApiKey"
+  "mode" | "userId" | "dbPath" | "openWebUiBaseUrl" | "openWebUiDataDir" | "openWebUiAuthToken" | "openWebUiApiKey"
 >;
 
 type OpenWebUiDbResolutionRequest = Pick<PrecheckRequest, "mode" | "dbPath" | "openWebUiDataDir">;
@@ -67,6 +71,20 @@ type OpenWebUiIdentityPayload = {
   };
 };
 
+type OpenWebUiIdentityLookupResult = {
+  userId?: string;
+  statusCode?: number;
+};
+
+type OpenWebUiUserRow = {
+  id?: unknown;
+  role?: unknown;
+};
+
+type SqliteLikeError = Error & {
+  code?: unknown;
+};
+
 const DEFAULT_OPENWEBUI_HOSTS = [
   "localhost",
   "127.0.0.1",
@@ -75,6 +93,27 @@ const DEFAULT_OPENWEBUI_HOSTS = [
 ];
 
 const DEFAULT_OPENWEBUI_PORTS = [3000, 8080, 42004];
+
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
+const WINDOWS_UNC_PATH_PATTERN = /^\\\\/;
+
+const PINOKIO_WINDOWS_DB_PATHS = [
+  "C:\\pinokio\\api\\OpenWebUI\\app\\env\\Lib\\site-packages\\open_webui\\data\\webui.db",
+  "C:\\pinokio\\api\\OpenWebUI\\app\\backend\\data\\webui.db",
+  "C:\\pinokio\\api\\OpenWebUI\\data\\webui.db",
+];
+
+const PINOKIO_DB_RELATIVE_PATHS = [
+  "api/OpenWebUI/app/env/Lib/site-packages/open_webui/data/webui.db",
+  "api/OpenWebUI/app/backend/data/webui.db",
+  "api/OpenWebUI/data/webui.db",
+  "api/openwebui/app/env/Lib/site-packages/open_webui/data/webui.db",
+  "api/openwebui/app/backend/data/webui.db",
+  "api/openwebui/data/webui.db",
+  "api/open-webui/app/env/Lib/site-packages/open_webui/data/webui.db",
+  "api/open-webui/app/backend/data/webui.db",
+  "api/open-webui/data/webui.db",
+];
 
 const DEFAULT_OPENWEBUI_BASE_URLS = DEFAULT_OPENWEBUI_HOSTS.flatMap((host) => {
   return DEFAULT_OPENWEBUI_PORTS.map((port) => `http://${host}:${port}`);
@@ -154,7 +193,7 @@ const fetchCurrentUserId = async (
   baseUrl: string,
   request: OpenWebUiResolutionRequest,
   env: EnvConfig,
-): Promise<string | null> => {
+): Promise<OpenWebUiIdentityLookupResult> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
@@ -168,20 +207,212 @@ const fetchCurrentUserId = async (
     });
 
     if (!response.ok) {
-      return null;
+      return {
+        statusCode: response.status,
+      };
     }
 
     const payload = (await response.json()) as unknown;
-    return pickIdentityId(payload);
+    return {
+      userId: pickIdentityId(payload) ?? undefined,
+      statusCode: response.status,
+    };
   } catch {
-    return null;
+    return {};
   } finally {
     clearTimeout(timeout);
   }
 };
 
+const isAbsolutePathLike = (candidatePath: string): boolean => {
+  return path.isAbsolute(candidatePath) || WINDOWS_ABSOLUTE_PATH_PATTERN.test(candidatePath) || WINDOWS_UNC_PATH_PATTERN.test(candidatePath);
+};
+
+const resolveExplicitDbPath = (basePath: string, dbPath: string): string => {
+  const trimmed = dbPath.trim();
+  if (isAbsolutePathLike(trimmed)) {
+    return path.normalize(trimmed);
+  }
+  return resolveSafePath(basePath, trimmed);
+};
+
+const toAbsoluteIfNeeded = (appRoot: string, candidatePath: string): string => {
+  const trimmed = candidatePath.trim();
+  return isAbsolutePathLike(trimmed) ? path.normalize(trimmed) : path.resolve(appRoot, trimmed);
+};
+
+const buildRuntimePathCandidates = (
+  candidatePath: string,
+  pathMapping: Array<{ host: string; container: string }>,
+): string[] => {
+  const translated = translateHostPathToContainer(candidatePath, pathMapping);
+  return uniqueValues([candidatePath, translated]);
+};
+
+const resolveReadableDbPath = (
+  candidates: string[],
+  pathMapping: Array<{ host: string; container: string }>,
+): string | undefined => {
+  for (const candidate of candidates) {
+    const runtimeCandidates = buildRuntimePathCandidates(candidate, pathMapping);
+    for (const runtimeCandidate of runtimeCandidates) {
+      try {
+        ensureReadableFile(runtimeCandidate);
+        return runtimeCandidate;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+const readSqliteErrorCode = (error: unknown): string | undefined => {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return undefined;
+  }
+
+  const code = (error as SqliteLikeError).code;
+  return typeof code === "string" && code.trim().length > 0 ? code.trim() : undefined;
+};
+
+const validateDirectDbReadiness = (
+  dbPath: string,
+  issuePath: string,
+  issues: PrecheckIssue[],
+): boolean => {
+  const issueCountBefore = issues.length;
+
+  try {
+    fs.accessSync(dbPath, fs.constants.W_OK);
+  } catch {
+    issues.push(
+      toIssue(
+        "DB_PATH_NOT_WRITABLE",
+        "OpenWebUI database is not writable. Ensure file permissions allow write access before Direct DB mode.",
+        issuePath,
+      ),
+    );
+  }
+
+  let db: Database.Database | undefined;
+  try {
+    db = new Database(dbPath, {
+      readonly: true,
+      fileMustExist: true,
+    });
+
+    const quickCheck = db.pragma("quick_check", { simple: true });
+    if (quickCheck !== "ok") {
+      issues.push(
+        toIssue(
+          "DB_FILE_INVALID",
+          `OpenWebUI database integrity check failed (quick_check=${String(quickCheck)}).`,
+          issuePath,
+        ),
+      );
+    }
+  } catch (error) {
+    const sqliteCode = readSqliteErrorCode(error);
+    if (sqliteCode === "SQLITE_NOTADB" || sqliteCode === "SQLITE_CORRUPT") {
+      issues.push(
+        toIssue(
+          "DB_FILE_INVALID",
+          "Resolved dbPath is not a valid SQLite database file for Direct DB mode.",
+          issuePath,
+        ),
+      );
+    } else {
+      const message = error instanceof Error ? error.message : "Unable to open OpenWebUI database.";
+      issues.push(toIssue("DB_OPEN_FAILED", message, issuePath));
+    }
+  } finally {
+    db?.close();
+  }
+
+  return issues.length === issueCountBefore;
+};
+
+const buildPinokioDbCandidates = (roots: string[]): string[] => {
+  const candidates: string[] = [];
+  for (const root of roots) {
+    for (const relativePath of PINOKIO_DB_RELATIVE_PATHS) {
+      candidates.push(path.join(root, relativePath));
+    }
+  }
+
+  return uniqueValues(candidates);
+};
+
+const normalizeDbUsers = (rows: OpenWebUiUserRow[]): Array<{ id: string; role?: string }> => {
+  return rows.flatMap((row) => {
+    if (typeof row.id !== "string" || row.id.trim().length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        id: row.id.trim(),
+        role: typeof row.role === "string" ? row.role.trim().toLowerCase() : undefined,
+      },
+    ];
+  });
+};
+
+const pickDbUserId = (rows: OpenWebUiUserRow[]): { userId?: string; multipleUsersFound: boolean } => {
+  const users = normalizeDbUsers(rows);
+  if (users.length === 0) {
+    return {
+      multipleUsersFound: false,
+    };
+  }
+
+  if (users.length === 1) {
+    return {
+      userId: users[0].id,
+      multipleUsersFound: false,
+    };
+  }
+
+  const adminUsers = users.filter((user) => user.role === "admin");
+  if (adminUsers.length === 1) {
+    return {
+      userId: adminUsers[0].id,
+      multipleUsersFound: false,
+    };
+  }
+
+  return {
+    multipleUsersFound: true,
+  };
+};
+
+const resolveIdentityFromDb = (
+  dbPath: string,
+): { userId?: string; multipleUsersFound: boolean } => {
+  let db: Database.Database | undefined;
+  try {
+    db = new Database(dbPath, {
+      readonly: true,
+      fileMustExist: true,
+    });
+    const rows = db
+      .prepare('SELECT id, role FROM "user"')
+      .all() as OpenWebUiUserRow[];
+    return pickDbUserId(rows);
+  } catch {
+    return {
+      multipleUsersFound: false,
+    };
+  } finally {
+    db?.close();
+  }
+};
+
 const resolveIdentity = async (
   request: OpenWebUiResolutionRequest,
+  appRoot: string,
   env: EnvConfig,
   issues: PrecheckIssue[],
 ): Promise<IdentityResolution> => {
@@ -194,20 +425,57 @@ const resolveIdentity = async (
   }
 
   const candidates = buildOpenWebUiCandidates(request, env);
+  let sawUnauthorizedLookup = false;
+  let reachableBaseUrl: string | undefined;
   for (const candidate of candidates) {
-    const discoveredUserId = await fetchCurrentUserId(candidate, request, env);
-    if (discoveredUserId) {
+    const lookupResult = await fetchCurrentUserId(candidate, request, env);
+    if (lookupResult.userId) {
       return {
-        resolvedUserId: discoveredUserId,
+        resolvedUserId: lookupResult.userId,
         resolvedOpenWebUiBaseUrl: candidate,
+      };
+    }
+
+    if (!reachableBaseUrl && typeof lookupResult.statusCode === "number") {
+      reachableBaseUrl = candidate;
+    }
+
+    sawUnauthorizedLookup = sawUnauthorizedLookup || lookupResult.statusCode === 401;
+  }
+
+  const inferredDbPath = resolveReadableDbPath(buildDbPathCandidates(request, env, appRoot), env.pathMapping);
+  if (inferredDbPath) {
+    const dbIdentity = resolveIdentityFromDb(inferredDbPath);
+    if (dbIdentity.userId) {
+      return {
+        resolvedUserId: dbIdentity.userId,
+        resolvedOpenWebUiBaseUrl: reachableBaseUrl,
+        resolvedDbPath: inferredDbPath,
+      };
+    }
+
+    if (dbIdentity.multipleUsersFound) {
+      issues.push(
+        toIssue(
+          "USER_ID_AMBIGUOUS",
+          "OpenWebUI database contains multiple users. Provide userId explicitly in advanced overrides.",
+        ),
+      );
+      return {
+        resolvedOpenWebUiBaseUrl: reachableBaseUrl,
+        resolvedDbPath: inferredDbPath,
       };
     }
   }
 
+  const authHint = sawUnauthorizedLookup
+    ? " OpenWebUI responded but rejected identity lookup (401). Provide token/API key, or let discovery read webui.db."
+    : "";
+
   issues.push(
     toIssue(
       "USER_ID_UNRESOLVED",
-      "Unable to resolve OpenWebUI user identity. Provide userId explicitly, or provide valid OpenWebUI auth credentials and base URL.",
+      `Unable to resolve OpenWebUI user identity. Provide userId explicitly, or provide valid OpenWebUI auth credentials and base URL.${authHint}`,
     ),
   );
 
@@ -236,38 +504,64 @@ const extractSqlitePath = (databaseUrl: string): string | null => {
   return null;
 };
 
-const toAbsoluteIfNeeded = (appRoot: string, candidatePath: string): string => {
-  return path.isAbsolute(candidatePath) ? path.normalize(candidatePath) : path.resolve(appRoot, candidatePath);
-};
-
 const buildDbPathCandidates = (
   request: OpenWebUiDbResolutionRequest,
   env: EnvConfig,
   appRoot: string,
 ): string[] => {
+  const explicitDbPath = request.dbPath?.trim();
   const explicitDataDir = request.openWebUiDataDir?.trim();
   const envDataDir = env.openWebUiDataDir?.trim();
   const sqlitePath = env.openWebUiDatabaseUrl ? extractSqlitePath(env.openWebUiDatabaseUrl) : null;
   const homeDir = os.homedir();
+  const pinokioContainerRoots = env.pathMapping
+    .map((entry) => entry.container)
+    .filter((value) => value.toLowerCase().includes("pinokio"));
+  const pinokioRoots = uniqueValues([
+    env.openWebUiPinokioRoot,
+    "/pinokio",
+    path.join(homeDir, "pinokio"),
+    path.join(homeDir, "AppData", "Roaming", "Pinokio"),
+    ...pinokioContainerRoots,
+  ]);
+  const pinokioCandidates = env.nodeEnv === "test" ? [] : buildPinokioDbCandidates(pinokioRoots);
+
+  let normalizedExplicitDbPath: string | null = null;
+  if (explicitDbPath) {
+    try {
+      normalizedExplicitDbPath = resolveExplicitDbPath(appRoot, explicitDbPath);
+    } catch {
+      normalizedExplicitDbPath = null;
+    }
+  }
+
+  const deterministicTestCandidates = [
+    path.resolve(appRoot, "data", "webui.db"),
+    path.resolve(appRoot, "..", "data", "webui.db"),
+  ];
+
+  const runtimeDefaultCandidates =
+    env.nodeEnv === "test"
+      ? deterministicTestCandidates
+      : [
+          "/app/backend/data/webui.db",
+          ...deterministicTestCandidates,
+          path.resolve(homeDir, ".open-webui", "webui.db"),
+          path.join(homeDir, "open-webui", "data", "webui.db"),
+          "C:\\open-webui\\data\\webui.db",
+          ...PINOKIO_WINDOWS_DB_PATHS,
+          ...pinokioCandidates,
+        ];
 
   const candidates = [
+    normalizedExplicitDbPath,
     explicitDataDir ? path.join(explicitDataDir, "webui.db") : null,
     envDataDir ? path.join(envDataDir, "webui.db") : null,
     sqlitePath,
-    "/app/backend/data/webui.db",
-    path.resolve(appRoot, "data", "webui.db"),
-    path.resolve(appRoot, "..", "data", "webui.db"),
-    path.resolve(homeDir, ".open-webui", "webui.db"),
+    ...runtimeDefaultCandidates,
   ];
 
   return uniqueValues(candidates).map((candidate) => toAbsoluteIfNeeded(appRoot, candidate));
-};
-
-const translatePathsForContainer = (
-  filePaths: string[],
-  pathMapping: Array<{ host: string; container: string }>
-): string[] => {
-  return filePaths.map(f => translateHostPathToContainer(f, pathMapping));
 };
 
 const checkScriptPath = (scriptPath: string, issues: PrecheckIssue[]): void => {
@@ -416,11 +710,18 @@ const validateDirectDbInput = (
 
   if (request.dbPath?.trim()) {
     try {
-      const resolvedDbPath = resolveSafePath(basePath, request.dbPath);
-      ensureReadableFile(resolvedDbPath);
-      return {
-        resolvedDbPath,
-      };
+      const explicitCandidate = resolveExplicitDbPath(basePath, request.dbPath);
+      const resolvedDbPath = resolveReadableDbPath([explicitCandidate], env.pathMapping);
+      if (!resolvedDbPath) {
+        throw new PathSafetyError("DB_PATH_INVALID", `dbPath is not readable: ${request.dbPath}`);
+      }
+      if (validateDirectDbReadiness(resolvedDbPath, request.dbPath, issues)) {
+        return {
+          resolvedDbPath,
+        };
+      }
+
+      return {};
     } catch (error) {
       const code = error instanceof PathSafetyError ? error.code : "DB_PATH_INVALID";
       const message = error instanceof Error ? error.message : "dbPath is invalid or not readable.";
@@ -430,15 +731,15 @@ const validateDirectDbInput = (
   }
 
   const inferredCandidates = buildDbPathCandidates(request, env, basePath);
-  for (const candidate of inferredCandidates) {
-    try {
-      ensureReadableFile(candidate);
+  const resolvedDbPath = resolveReadableDbPath(inferredCandidates, env.pathMapping);
+  if (resolvedDbPath) {
+    if (validateDirectDbReadiness(resolvedDbPath, resolvedDbPath, issues)) {
       return {
-        resolvedDbPath: candidate,
+        resolvedDbPath,
       };
-    } catch {
-      continue;
     }
+
+    return {};
   }
 
   issues.push(
@@ -476,11 +777,25 @@ const buildResult = (
     checks,
     resolvedUserId: identity.resolvedUserId,
     resolvedOpenWebUiBaseUrl: identity.resolvedOpenWebUiBaseUrl,
-    resolvedDbPath: dbResolution.resolvedDbPath,
+    resolvedDbPath: dbResolution.resolvedDbPath ?? identity.resolvedDbPath,
     resolvedInputFiles: files,
     fileCount: files.length,
     totalBytes,
     issues,
+  };
+};
+
+const resolveRuntimeSettings = (deps: PrecheckServiceDeps): RuntimeSettings => {
+  if (deps.getRuntimeSettings) {
+    return deps.getRuntimeSettings();
+  }
+
+  return {
+    pythonBin: deps.env.pythonBin,
+    importerRoot: deps.env.importerRoot,
+    maxInputFiles: deps.env.maxInputFiles,
+    maxInputTotalBytes: deps.env.maxInputTotalBytes,
+    subprocessTimeoutMs: deps.env.subprocessTimeoutMs,
   };
 };
 
@@ -508,14 +823,14 @@ export const createPrecheckService = (deps: PrecheckServiceDeps): PrecheckServic
 
     const request = parsed.data;
     const issues: PrecheckIssue[] = [];
-    const identity = await resolveIdentity(request, deps.env, issues);
+    const identity = await resolveIdentity(request, appRoot, deps.env, issues);
     const dbResolution = validateDirectDbInput(request, appRoot, deps.env, issues);
 
     return {
       ok: issues.length === 0,
       resolvedUserId: identity.resolvedUserId,
       resolvedOpenWebUiBaseUrl: identity.resolvedOpenWebUiBaseUrl,
-      resolvedDbPath: dbResolution.resolvedDbPath,
+      resolvedDbPath: dbResolution.resolvedDbPath ?? identity.resolvedDbPath,
       issues,
     };
   };
@@ -542,7 +857,8 @@ export const createPrecheckService = (deps: PrecheckServiceDeps): PrecheckServic
 
     const request = parsed.data;
     const issues: PrecheckIssue[] = [];
-    const identity = await resolveIdentity(request, deps.env, issues);
+    const identity = await resolveIdentity(request, appRoot, deps.env, issues);
+    const runtimeSettings = resolveRuntimeSettings(deps);
 
     try {
       await deps.pythonAdapter.probePython();
@@ -551,27 +867,27 @@ export const createPrecheckService = (deps: PrecheckServiceDeps): PrecheckServic
       issues.push(toIssue("PYTHON_UNAVAILABLE", message));
     }
 
-    checkScriptPath(getConverterScriptPath(deps.env.importerRoot, request.source), issues);
-    checkScriptPath(getCreateSqlScriptPath(deps.env.importerRoot), issues);
-    checkScriptPath(getBatchScriptPath(deps.env.importerRoot), issues);
+    checkScriptPath(getConverterScriptPath(runtimeSettings.importerRoot, request.source), issues);
+    checkScriptPath(getCreateSqlScriptPath(runtimeSettings.importerRoot), issues);
+    checkScriptPath(getBatchScriptPath(runtimeSettings.importerRoot), issues);
 
     const normalizedInputs = normalizeInputPaths(appRoot, request.inputPaths, issues);
     const collectedFiles = collectInputFiles(
       request,
       normalizedInputs,
-      deps.env.maxInputFiles,
+      runtimeSettings.maxInputFiles,
       issues,
       deps.env.pathMapping,
     );
-    if (collectedFiles.length > deps.env.maxInputFiles) {
-      issues.push(toIssue("INPUT_TOO_MANY_FILES", `Input exceeds ${deps.env.maxInputFiles} files.`));
+    if (collectedFiles.length > runtimeSettings.maxInputFiles) {
+      issues.push(toIssue("INPUT_TOO_MANY_FILES", `Input exceeds ${runtimeSettings.maxInputFiles} files.`));
     }
 
     validateExtensions(request.source, collectedFiles, issues, deps.env.pathMapping);
     validateOutputDirectories(deps.env, issues);
     const dbResolution = validateDirectDbInput(request, appRoot, deps.env, issues);
 
-    const stats = computeStats(collectedFiles, deps.env.maxInputTotalBytes, issues, deps.env.pathMapping);
+    const stats = computeStats(collectedFiles, runtimeSettings.maxInputTotalBytes, issues, deps.env.pathMapping);
     return buildResult(issues, stats.files, stats.totalBytes, identity, dbResolution);
   };
 

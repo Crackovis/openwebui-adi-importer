@@ -11,7 +11,7 @@ import type { PrecheckService } from "./precheck-service";
 import type { ConversionOrchestrator } from "./conversion-orchestrator";
 import type { SqlOrchestrator } from "./sql-orchestrator";
 import type { DbBackupService } from "./db-backup-service";
-import type { DbImportService } from "./db-import-service";
+import { DbImportError, type DbImportService } from "./db-import-service";
 
 export type JobExecutionRequest = {
   jobId: string;
@@ -181,11 +181,20 @@ export const createJobRunner = (deps: JobRunnerDeps): JobRunner => {
           backupPath,
         });
 
-        deps.dbImportService.applySql({
-          dbPath: effectiveDbPath,
-          sqlPath: sqlOutput.sqlPath,
-          confirmationText: request.confirmationText,
-        });
+        try {
+          deps.dbImportService.applySql({
+            dbPath: effectiveDbPath,
+            sqlPath: sqlOutput.sqlPath,
+            confirmationText: request.confirmationText,
+          });
+        } catch (error) {
+          if (error instanceof DbImportError) {
+            throw new JobRunError("failed_db", `${error.code}: ${error.message}`);
+          }
+
+          const message = error instanceof Error ? error.message : "Direct DB import failed.";
+          throw new JobRunError("failed_db", message);
+        }
 
         deps.jobsRepository.patchJobOutput(request.jobId, {
           appliedToDb: 1,

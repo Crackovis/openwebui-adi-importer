@@ -14,13 +14,24 @@ ADI Importer provides a web interface to import conversations from various AI pl
 
 - **Import Wizard**: Multi-step guided import process
 - **Auto OpenWebUI Discovery**: Resolves OpenWebUI URL, user identity, and DB path when possible
+- **Format Conversion Pipeline**: Converts ChatGPT, Claude, Grok, and AI Studio exports into OpenWebUI-style JSON artifacts
 - **SQL Generation Mode**: Export import SQL for manual execution
 - **Direct DB Import Mode**: Automatic import with automatic backups
 - **Pre-check Validation**: Validates environment before running
 - **Conversion Preview**: See what will be imported before execution
 - **Job History**: Track all import operations with full logs
-- **Smart Tagging**: Automatic tag generation and deduplication
+- **Tag Upserts**: Ensures import tags exist per user during SQL generation
 - **Batch Folder Mode**: Process multiple files at once
+
+### openwebui-importer capabilities surfaced by ADI
+
+ADI wraps `openwebui-importer` and exposes more than `job-<id>.sql` output:
+
+- Converter scripts handle **ChatGPT**, **Claude**, **Grok**, and **AI Studio** exports.
+- Converters emit normalized OpenWebUI-style JSON files in per-source output folders.
+- Converter text sanitization removes private-use Unicode characters found in some exports.
+- `scripts/run_batch.py` can batch-convert an input directory and optionally skip SQL generation when `--sql-output` is not provided.
+- `create_sql.py` supports directory inputs and uses tag upserts, while replacing existing chats with the same IDs before insert.
 
 ## Prerequisites
 
@@ -98,12 +109,28 @@ SUBPROCESS_TIMEOUT_MS=120000
 # Optional OpenWebUI auto-discovery overrides
 OPENWEBUI_BASE_URL=
 OPENWEBUI_DISCOVERY_URLS=http://host.docker.internal:42004,http://host.docker.internal:3000,http://host.docker.internal:8080
-OPENWEBUI_DATA_DIR=
+OPENWEBUI_DATA_DIR=/pinokio/api/OpenWebUI/app/env/Lib/site-packages/open_webui/data
+OPENWEBUI_PINOKIO_ROOT=/pinokio
 OPENWEBUI_DATABASE_URL=
 OPENWEBUI_AUTH_TOKEN=
 OPENWEBUI_API_KEY=
 OPENWEBUI_DISCOVERY_TIMEOUT_MS=3000
+
+# Optional host-to-container mapping for direct DB detection
+PATH_MAPPING=C:/pinokio;/pinokio
+
+# Optional host path override for Docker volume mount
+PINOKIO_HOST_ROOT=C:/pinokio
 ```
+
+You can change these same runtime limits from `http://localhost:5173/settings`.
+Changes apply immediately to new uploads/jobs (no server restart), including:
+
+- `Max Input Files (count)`
+- `Max Input Size (bytes)`
+- `Subprocess Timeout (ms)`
+
+When running with Docker on Windows + Pinokio, `docker-compose.yml` mounts `${PINOKIO_HOST_ROOT:-C:/pinokio}` into `/pinokio` for the server container.
 
 ## Usage
 
@@ -128,6 +155,7 @@ Navigate to http://localhost:5173 to see the dashboard.
 
 ### 4. SQL Mode
 
+- Conversion still runs first and produces normalized preview artifacts.
 - Download generated SQL from the job detail page
 - Execute manually in your OpenWebUI database
 
