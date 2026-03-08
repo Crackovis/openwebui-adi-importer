@@ -91,6 +91,41 @@ describe("ImportWizardPage", () => {
     expect(screen.getByRole("link", { name: "job-123" })).toBeTruthy();
   });
 
+  it("submits a convert-only payload when action is selected", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <ImportWizardPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.type(screen.getByLabelText("Paths (one per line)"), "C:\\exports\\chat-1.json");
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.selectOptions(screen.getByLabelText("Action"), "convert_only");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Run Import" }));
+
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+    const [, payload] = mockedApiPost.mock.calls[0] as [
+      string,
+      {
+        mode: string;
+        confirmationText?: string;
+        dbPath?: string;
+      },
+    ];
+
+    expect(payload).toMatchObject({
+      mode: "convert_only",
+    });
+    expect(payload).not.toHaveProperty("confirmationText");
+    expect(payload).not.toHaveProperty("dbPath");
+  });
+
   it("uploads selected files and uses uploaded paths in payload", async () => {
     const user = userEvent.setup();
 
@@ -184,8 +219,8 @@ describe("ImportWizardPage", () => {
     await user.type(screen.getByLabelText("OpenWebUI Token/API key (optional)"), "sk-test-key");
 
     await user.click(screen.getByRole("button", { name: "Next" }));
-    await user.selectOptions(screen.getByLabelText("Import Mode"), "direct_db");
-    expect(screen.getByText(/Both modes run conversion first and keep preview artifacts/i)).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("Action"), "direct_db");
+    expect(screen.getByText(/All actions run conversion first and keep preview artifacts/i)).toBeTruthy();
     await user.type(screen.getByLabelText("Target webui.db path override (optional)"), "C:\\open-webui\\webui.db");
     await user.type(screen.getByLabelText("Type CONFIRM_DB_WRITE"), "CONFIRM_DB_WRITE");
 

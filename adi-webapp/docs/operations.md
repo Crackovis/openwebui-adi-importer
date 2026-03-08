@@ -1,26 +1,28 @@
 # Operations Guide
 
-Understanding the two import modes and how to use them safely.
+Understanding the available import actions and how to use them safely.
 
 ## Table of Contents
 
-- [Import Modes Overview](#import-modes-overview)
+- [Import Actions Overview](#import-actions-overview)
 - [Importer Core Capabilities](#importer-core-capabilities)
-- [SQL Mode](#sql-mode)
-- [Direct DB Mode](#direct-db-mode)
+- [Convert-Only Action](#convert-only-action)
+- [SQL Action](#sql-action)
+- [Direct DB Action](#direct-db-action)
 - [Backup and Restore](#backup-and-restore)
 - [Best Practices](#best-practices)
 
-## Import Modes Overview
+## Import Actions Overview
 
-ADI Importer supports two import modes:
+ADI Importer supports three execution actions:
 
-| Mode | Use Case | Safety Level | Speed |
-|------|----------|--------------|-------|
-| **SQL Mode** | Review before import, manual control | Highest | Requires manual execution |
-| **Direct DB** | Automated imports, trusted sources | High (with backups) | Automatic |
+| Action | Use Case | Safety Level | Speed |
+|--------|----------|--------------|-------|
+| **Convert only** | Produce normalized JSON artifacts only | Highest | Fastest |
+| **Generate SQL** | Review before import, manual control | High | Requires manual SQL execution |
+| **Direct DB import** | Automated imports, trusted sources | High (with backups) | Automatic |
 
-Both modes share the same conversion pipeline first, then diverge at execution time.
+All actions share the same conversion pipeline first, then diverge at execution time.
 
 ## Importer Core Capabilities
 
@@ -32,11 +34,32 @@ The bundled `openwebui-importer` scripts provide capabilities beyond SQL generat
 - **Batch helper**: `scripts/run_batch.py` can process a full input directory and can run conversion-only when `--sql-output` is omitted.
 - **SQL generation behavior**: `create_sql.py` supports JSON files or directories, upserts tags, and deletes existing chat rows with matching IDs before reinserting.
 
-## SQL Mode
+## Convert-Only Action
 
 ### Overview
 
-SQL Mode generates a SQL file containing all INSERT statements needed to import your conversations. You review and execute the SQL manually.
+Convert-only action runs the source converters and writes OpenWebUI-style JSON artifacts plus preview output. It does not generate SQL and does not modify any database.
+
+### Workflow
+
+1. **Upload Files** → Select your export files
+2. **Configure** → Keep auto-detect defaults, add optional tags
+3. **Preview Discovery** → Use "Test Auto-Detection" to verify resolved user and URL
+4. **Select Convert-Only Action** → Choose "Convert only (OpenWebUI JSON)"
+5. **Run Conversion** → System converts and stores normalized artifacts
+6. **Inspect Preview** → Review converted output and metadata
+
+### When to Use Convert-Only
+
+- **Data inspection**: Validate converted payloads before SQL generation
+- **Pipeline debugging**: Isolate conversion issues from SQL/DB write concerns
+- **Artifact export**: Keep OpenWebUI-style JSON as integration output
+
+## SQL Action
+
+### Overview
+
+SQL action generates a SQL file containing all INSERT statements needed to import your conversations. You review and execute the SQL manually.
 
 Before SQL is generated, source exports are converted into OpenWebUI-style JSON artifacts.
 
@@ -45,13 +68,13 @@ Before SQL is generated, source exports are converted into OpenWebUI-style JSON 
 1. **Upload Files** → Select your export files
 2. **Configure** → Keep auto-detect defaults, add optional tags
 3. **Preview Discovery** → Use "Test Auto-Detection" to verify resolved user and URL
-4. **Select SQL Mode** → Choose "Generate SQL Only"
+4. **Select SQL Action** → Choose "Generate SQL (convert + SQL)"
 5. **Run Conversion** → System converts and generates SQL
 6. **Download SQL** → Get the generated SQL file
 7. **Review** → Inspect the SQL statements
 8. **Execute** → Run SQL in your OpenWebUI database
 
-### When to Use SQL Mode
+### When to Use SQL Action
 
 - **First-time imports**: Review what will be imported
 - **Production databases**: Extra safety for critical data
@@ -96,27 +119,27 @@ sqlite3 webui.db < generated_import.sql
 
 Some OpenWebUI deployments provide database access via admin console.
 
-### SQL Mode Safety
+### SQL Action Safety
 
 - **No automatic changes**: Database is never modified automatically
 - **Review opportunity**: Inspect every statement before execution
 - **Transaction safety**: SQL can be wrapped in BEGIN/COMMIT
 - **Rollback ready**: Original database remains unchanged until you execute
 
-## Direct DB Mode
+## Direct DB Action
 
 ### Overview
 
-Direct DB Mode automatically imports conversations directly into your OpenWebUI database. Includes automatic backups and safety checks.
+Direct DB action automatically imports conversations directly into your OpenWebUI database. Includes automatic backups and safety checks.
 
-Direct DB mode still runs the same conversion pipeline first, then applies generated SQL in a controlled execution step.
+Direct DB action still runs the same conversion pipeline first, then applies generated SQL in a controlled execution step.
 
 ### Workflow
 
 1. **Upload Files** → Select your export files
 2. **Configure** → Keep auto-detect defaults, add optional tags
 3. **Preview Discovery** → Use "Test Auto-Detection" and verify resolved user/DB path
-4. **Select Direct DB Mode** → Choose "Import Directly to Database"
+4. **Select Direct DB Action** → Choose "Direct DB import (convert + SQL + DB write)"
 5. **Optional Advanced Override** → Set DB path only if auto-detection fails
 6. **Review Pre-check** → System validates everything
 7. **Confirm** → Explicit confirmation required
@@ -124,7 +147,7 @@ Direct DB mode still runs the same conversion pipeline first, then applies gener
 9. **Import** → Conversations imported directly
 10. **Verify** → Check OpenWebUI for imported conversations
 
-### When to Use Direct DB Mode
+### When to Use Direct DB Action
 
 - **Regular imports**: Trusted, recurring import workflow
 - **Large batches**: Process many files automatically
@@ -155,7 +178,7 @@ Before import, system validates:
 - ✅ File extensions valid for source
 - ✅ User identity resolvable (auto or explicit override)
 - ✅ Output directories writable
-- ✅ Target database path resolvable and accessible (Direct DB mode)
+- ✅ Target database path resolvable and writable (Direct DB action)
 
 #### 3. Explicit Confirmation
 
@@ -216,13 +239,15 @@ PATH_MAPPING=C:/pinokio;/pinokio
 PINOKIO_HOST_ROOT=C:/pinokio
 ```
 
+If running in Docker with Pinokio, ensure the server volume mount for `/pinokio` is read-write (`:rw`). A read-only mount (`:ro`) causes Direct DB writable precheck failures.
+
 When OpenWebUI auth returns `401`, discovery can still resolve `userId` from `webui.db` and report the first reachable OpenWebUI URL candidate in `Resolved OpenWebUI URL`.
 
 ## Backup and Restore
 
 ### Backup Strategy
 
-#### Automatic Backups (Direct DB Mode)
+#### Automatic Backups (Direct DB Action)
 
 Every Direct DB import creates a backup:
 
@@ -304,10 +329,10 @@ DETACH DATABASE backup;
    cp webui.db webui.db.pre-import.backup
    ```
 
-2. **Start with SQL Mode**
-   - First import: Use SQL Mode to understand the process
+2. **Start with Convert-only or SQL Action**
+   - First import: Use convert-only to inspect artifacts or SQL action to review statements
    - Review generated SQL
-   - Then switch to Direct DB for routine imports
+   - Then switch to Direct DB action for routine imports
 
 3. **Test in Non-Production**
    - Test imports in a development OpenWebUI instance
@@ -331,7 +356,7 @@ DETACH DATABASE backup;
    rm -rf storage/sql/*
    ```
 
-### SQL Mode Best Practices
+### SQL Action Best Practices
 
 1. **Review Before Execution**
    - Check user_id is correct
@@ -348,7 +373,7 @@ DETACH DATABASE backup;
    - Store SQL files for audit trail
    - Name with date: `import_2024-03-15_chatgpt.sql`
 
-### Direct DB Best Practices
+### Direct DB Action Best Practices
 
 1. **Verify Identity Resolution**
    - Confirm OpenWebUI session or token/API key is valid
@@ -372,23 +397,23 @@ DETACH DATABASE backup;
    sqlite3 webui.db "SELECT id, title, created_at FROM chat ORDER BY created_at DESC LIMIT 10;"
    ```
 
-### Troubleshooting Mode Selection
+### Troubleshooting Action Selection
 
-| Problem | Recommended Mode |
-|---------|-----------------|
-| First time using importer | SQL Mode |
-| Unsure about data quality | SQL Mode |
-| Importing to production | SQL Mode (or Direct DB with extra backup) |
-| Routine monthly import | Direct DB Mode |
-| Bulk import (100+ files) | Direct DB Mode |
-| Automated/scripted import | Direct DB Mode |
-| Testing/development | Either mode |
+| Problem | Recommended Action |
+|---------|--------------------|
+| First time using importer | Convert-only or SQL action |
+| Unsure about data quality | Convert-only action |
+| Importing to production | SQL action (or Direct DB with extra backup) |
+| Routine monthly import | Direct DB action |
+| Bulk import (100+ files) | Direct DB action |
+| Automated/scripted import | Direct DB action |
+| Testing/development | Any action |
 
 ## Security Considerations
 
 ### Database Access
 
-- Direct DB Mode requires file system access to webui.db
+- Direct DB action requires file system access to webui.db
 - Ensure proper file permissions
 - Run importer with same user as OpenWebUI
 

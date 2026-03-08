@@ -102,7 +102,26 @@ describe("JobDetailPage", () => {
     expect(await screen.findByText(/User ID:\s*user-42/i)).toBeTruthy();
     expect(await screen.findByText("Stored timeline log")).toBeTruthy();
     expect(await screen.findByText("Live stream log entry")).toBeTruthy();
-    expect(await screen.findByText(/Conversion runs before SQL\/direct DB steps/i)).toBeTruthy();
+    expect(await screen.findByText(/runs conversion first, then generates a SQL artifact/i)).toBeTruthy();
+    expect(await screen.findByText("Download Preview JSON")).toBeTruthy();
     expect(await screen.findByText("Download SQL Artifact")).toBeTruthy();
+  });
+
+  it("shows a legacy fallback action label when mode is missing", async () => {
+    mockedApiGet.mockResolvedValueOnce({
+      ...baseJobDetail,
+      mode: undefined,
+    } as unknown as JobDetail);
+
+    render(
+      <MemoryRouter initialEntries={["/jobs/job-abc-123"]}>
+        <Routes>
+          <Route path="/jobs/:id" element={<JobDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Generate SQL (legacy default)")).toBeTruthy();
+    expect(await screen.findByText(/legacy action metadata/i)).toBeTruthy();
   });
 });

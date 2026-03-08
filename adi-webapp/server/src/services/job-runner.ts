@@ -147,58 +147,60 @@ export const createJobRunner = (deps: JobRunnerDeps): JobRunner => {
       deps.jobStateMachine.transition(request.jobId, "preview_ready");
       deps.jobLogService.logInfo(request.jobId, "preview", "Preview artifact generated.");
 
-      const sqlOutput = await deps.sqlOrchestrator.generate({
-        jobId: request.jobId,
-        normalizedInputPath: conversion.normalizedDir,
-        sqlDir: deps.env.sqlDir,
-        tags: conversion.effectiveTags,
-      });
-
-      deps.jobsRepository.patchJobOutput(request.jobId, {
-        sqlPath: sqlOutput.sqlPath,
-      });
-
-      deps.jobStateMachine.transition(request.jobId, "sql_ready");
-      deps.jobLogService.logInfo(request.jobId, "sql", "SQL artifact generated.");
-
-      if (request.mode === "direct_db") {
-        if (!effectiveDbPath) {
-          throw new JobRunError("failed_db", "Direct DB mode requires dbPath.");
-        }
-        if (request.confirmationText !== DB_IMPORT_CONFIRMATION_TEXT) {
-          throw new JobRunError("failed_db", "Explicit confirmation is required for Direct DB mode.");
-        }
-
-        deps.jobStateMachine.transition(request.jobId, "db_importing");
-        deps.jobLogService.logWarning(
-          request.jobId,
-          "db_import",
-          "Direct DB import started. Backup will be created before write.",
-        );
-
-        const backupPath = deps.dbBackupService.createBackup(effectiveDbPath, request.jobId);
-        deps.jobsRepository.patchJobOutput(request.jobId, {
-          backupPath,
+      if (request.mode !== "convert_only") {
+        const sqlOutput = await deps.sqlOrchestrator.generate({
+          jobId: request.jobId,
+          normalizedInputPath: conversion.normalizedDir,
+          sqlDir: deps.env.sqlDir,
+          tags: conversion.effectiveTags,
         });
 
-        try {
-          deps.dbImportService.applySql({
-            dbPath: effectiveDbPath,
-            sqlPath: sqlOutput.sqlPath,
-            confirmationText: request.confirmationText,
-          });
-        } catch (error) {
-          if (error instanceof DbImportError) {
-            throw new JobRunError("failed_db", `${error.code}: ${error.message}`);
+        deps.jobsRepository.patchJobOutput(request.jobId, {
+          sqlPath: sqlOutput.sqlPath,
+        });
+
+        deps.jobStateMachine.transition(request.jobId, "sql_ready");
+        deps.jobLogService.logInfo(request.jobId, "sql", "SQL artifact generated.");
+
+        if (request.mode === "direct_db") {
+          if (!effectiveDbPath) {
+            throw new JobRunError("failed_db", "Direct DB mode requires dbPath.");
+          }
+          if (request.confirmationText !== DB_IMPORT_CONFIRMATION_TEXT) {
+            throw new JobRunError("failed_db", "Explicit confirmation is required for Direct DB mode.");
           }
 
-          const message = error instanceof Error ? error.message : "Direct DB import failed.";
-          throw new JobRunError("failed_db", message);
-        }
+          deps.jobStateMachine.transition(request.jobId, "db_importing");
+          deps.jobLogService.logWarning(
+            request.jobId,
+            "db_import",
+            "Direct DB import started. Backup will be created before write.",
+          );
 
-        deps.jobsRepository.patchJobOutput(request.jobId, {
-          appliedToDb: 1,
-        });
+          const backupPath = deps.dbBackupService.createBackup(effectiveDbPath, request.jobId);
+          deps.jobsRepository.patchJobOutput(request.jobId, {
+            backupPath,
+          });
+
+          try {
+            deps.dbImportService.applySql({
+              dbPath: effectiveDbPath,
+              sqlPath: sqlOutput.sqlPath,
+              confirmationText: request.confirmationText,
+            });
+          } catch (error) {
+            if (error instanceof DbImportError) {
+              throw new JobRunError("failed_db", `${error.code}: ${error.message}`);
+            }
+
+            const message = error instanceof Error ? error.message : "Direct DB import failed.";
+            throw new JobRunError("failed_db", message);
+          }
+
+          deps.jobsRepository.patchJobOutput(request.jobId, {
+            appliedToDb: 1,
+          });
+        }
       }
 
       deps.jobStateMachine.transition(request.jobId, "completed");

@@ -1,7 +1,7 @@
 export const JOB_SOURCES = ["chatgpt", "claude", "grok", "aistudio"] as const;
 export type JobSource = (typeof JOB_SOURCES)[number];
 
-export const JOB_MODES = ["sql", "direct_db"] as const;
+export const JOB_MODES = ["convert_only", "sql", "direct_db"] as const;
 export type JobMode = (typeof JOB_MODES)[number];
 
 export const JOB_STATUSES = [

@@ -28,6 +28,10 @@ type JobRequestBase = {
   openWebUiAuthToken?: string;
 };
 
+type ConvertOnlyJobRequest = JobRequestBase & {
+  mode: "convert_only";
+};
+
 type SqlJobRequest = JobRequestBase & {
   mode: "sql";
 };
@@ -203,20 +207,30 @@ export const ImportWizardPage = (): JSX.Element => {
         basePayload.openWebUiAuthToken = optionalAuthToken;
       }
 
-      const payload: SqlJobRequest | DirectDbJobRequest =
-        form.mode === "direct_db"
-          ? {
-              ...basePayload,
-              mode: "direct_db",
-              confirmationText: form.confirmationText,
-              ...(optionalDbPath ? { dbPath: optionalDbPath } : {}),
-            }
-          : {
-              ...basePayload,
-              mode: "sql",
-            };
+      let payload: ConvertOnlyJobRequest | SqlJobRequest | DirectDbJobRequest;
+      if (form.mode === "direct_db") {
+        payload = {
+          ...basePayload,
+          mode: "direct_db",
+          confirmationText: form.confirmationText,
+          ...(optionalDbPath ? { dbPath: optionalDbPath } : {}),
+        };
+      } else if (form.mode === "convert_only") {
+        payload = {
+          ...basePayload,
+          mode: "convert_only",
+        };
+      } else {
+        payload = {
+          ...basePayload,
+          mode: "sql",
+        };
+      }
 
-      const created = await apiPost<CreateJobResponse, SqlJobRequest | DirectDbJobRequest>("/api/jobs", payload);
+      const created = await apiPost<CreateJobResponse, ConvertOnlyJobRequest | SqlJobRequest | DirectDbJobRequest>(
+        "/api/jobs",
+        payload,
+      );
       setCreatedJob(created);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Failed to start job.");
@@ -418,18 +432,19 @@ export const ImportWizardPage = (): JSX.Element => {
           <div className="form-grid">
             <div className="field" style={{ gridColumn: "1 / -1" }}>
               <small style={{ color: "#a8b4c7" }}>
-                Both modes run conversion first and keep preview artifacts for inspection.
+                All actions run conversion first and keep preview artifacts for inspection.
               </small>
             </div>
             <div className="field">
-              <label htmlFor="mode">Import Mode</label>
+              <label htmlFor="mode">Action</label>
               <select
                 id="mode"
                 value={form.mode}
                 onChange={(event) => setForm((current) => ({ ...current, mode: event.target.value as JobMode }))}
               >
-                <option value="sql">SQL only</option>
-                <option value="direct_db">Direct DB import</option>
+                <option value="convert_only">Convert only (OpenWebUI JSON)</option>
+                <option value="sql">Generate SQL (convert + SQL)</option>
+                <option value="direct_db">Direct DB import (convert + SQL + DB write)</option>
               </select>
             </div>
 
@@ -437,7 +452,7 @@ export const ImportWizardPage = (): JSX.Element => {
               <>
                 <div className="field" style={{ gridColumn: "1 / -1" }}>
                   <small style={{ color: "#a8b4c7" }}>
-                    Direct DB mode tries automatic database path detection first.
+                    Direct DB action tries automatic database path detection first.
                   </small>
                 </div>
                 {showAdvancedOverrides ? (
@@ -482,7 +497,7 @@ export const ImportWizardPage = (): JSX.Element => {
               <p className="meta-value">{form.userId.trim() ? "manual override" : "auto-detect"}</p>
             </article>
             <article className="meta-card">
-              <p className="meta-label">Mode</p>
+              <p className="meta-label">Action</p>
               <p className="meta-value">{form.mode}</p>
             </article>
           </div>

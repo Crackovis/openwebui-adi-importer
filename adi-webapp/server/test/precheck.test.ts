@@ -381,6 +381,53 @@ describe("createPrecheckService", () => {
     }
   });
 
+  it("reports Docker mount hint when direct_db database path is not writable", async () => {
+    const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-not-writable-"));
+    try {
+      const env = createTestEnv(rootDir);
+      writeImporterScripts(env.importerRoot);
+
+      const inputFile = path.join(rootDir, "inputs", "chat-1.json");
+      fs.mkdirSync(path.dirname(inputFile), { recursive: true });
+      fs.writeFileSync(inputFile, "{}", "utf8");
+
+      const openWebUiDataDir = path.join(rootDir, "openwebui-data");
+      fs.mkdirSync(openWebUiDataDir, { recursive: true });
+      const inferredDbPath = path.join(openWebUiDataDir, "webui.db");
+      createOpenWebUiDb(inferredDbPath, [{ id: "direct-db-user", role: "admin" }]);
+
+      const originalAccessSync = fs.accessSync.bind(fs);
+      vi.spyOn(fs, "accessSync").mockImplementation((targetPath: fs.PathLike, mode?: number): void => {
+        if (typeof mode === "number" && mode === fs.constants.W_OK && String(targetPath) === inferredDbPath) {
+          throw new Error("EACCES");
+        }
+        originalAccessSync(targetPath, mode);
+      });
+
+      const service = createPrecheckService({
+        env,
+        pythonAdapter: createPythonAdapterMock(),
+      });
+
+      const result = await service.run({
+        source: "chatgpt",
+        inputMode: "files",
+        inputPaths: [inputFile],
+        userId: "explicit-user",
+        mode: "direct_db",
+        dbPath: inferredDbPath,
+        tags: [],
+      });
+
+      const writableIssue = result.issues.find((issue) => issue.code === "DB_PATH_NOT_WRITABLE");
+      expect(result.ok).toBe(false);
+      expect(writableIssue).toBeDefined();
+      expect(writableIssue?.message).toContain("remove ':ro'");
+    } finally {
+      fs.rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("returns DB_PATH_UNRESOLVED diagnostic when direct_db path cannot be discovered", async () => {
     const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "adi-precheck-db-unresolved-"));
     try {

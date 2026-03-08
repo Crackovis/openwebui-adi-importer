@@ -19,7 +19,7 @@ services:
       - ../openwebui-importer:/importer-scripts:ro
       - server_node_modules:/workspace/server/node_modules
       - app_storage:/workspace/storage
-      - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:ro"
+      - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:rw"
     ports:
       - "8787:8787"
     extra_hosts:

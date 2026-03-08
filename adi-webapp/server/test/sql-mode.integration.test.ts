@@ -44,11 +44,15 @@ const createTestEnv = (rootDir: string): EnvConfig => {
   };
 };
 
-const createQueuedJob = (jobsRepository: JobsRepository, jobId: string): void => {
+const createQueuedJob = (
+  jobsRepository: JobsRepository,
+  jobId: string,
+  mode: JobExecutionRequest["mode"] = "sql",
+): void => {
   jobsRepository.createJob({
     id: jobId,
     source: "chatgpt",
-    mode: "sql",
+    mode,
     status: "queued",
     createdAt: Date.now(),
     startedAt: null,
@@ -176,6 +180,107 @@ describe("SQL mode integration", () => {
       sqlPath: path.join(rootDir, "sql", "job-sql-happy.sql"),
       appliedToDb: 0,
     });
+    expect(dbBackupService.createBackup).not.toHaveBeenCalled();
+    expect(dbImportService.applySql).not.toHaveBeenCalled();
+  });
+
+  it("completes convert_only mode without SQL generation", async () => {
+    const jobId = "job-convert-only";
+    createQueuedJob(jobsRepository, jobId, "convert_only");
+
+    const env = createTestEnv(rootDir);
+    const jobLogService = createJobLogService(jobsRepository);
+    const jobStateMachine = createJobStateMachine({
+      jobsRepository,
+      jobLogService,
+    });
+
+    const precheckService: PrecheckService = {
+      discoverOpenWebUi: vi.fn(),
+      run: vi.fn().mockResolvedValue({
+        ok: true,
+        checks: {
+          pythonAvailable: true,
+          scriptPaths: true,
+          inputsReadable: true,
+          extensionsValid: true,
+          userIdPresent: true,
+          outputWritable: true,
+        },
+        resolvedInputFiles: [path.join(rootDir, "inputs", "chat-1.json")],
+        fileCount: 1,
+        totalBytes: 20,
+        issues: [],
+      }),
+    };
+
+    const conversionOrchestrator: ConversionOrchestrator = {
+      run: vi.fn().mockResolvedValue({
+        effectiveTags: ["imported-chatgpt", "batch-job-convert-only"],
+        convertedFiles: [path.join(rootDir, "normalized", "chat-1.json")],
+        failedFiles: [],
+        convertedCount: 1,
+        normalizedDir: path.join(rootDir, "normalized"),
+        rawOutputDir: path.join(rootDir, "raw", "chatgpt"),
+        preview: {
+          previewPath: path.join(rootDir, "preview", "job-convert-only.preview.json"),
+          data: {
+            conversationCount: 1,
+            sampleTitles: ["Sample"],
+            sampleMessages: [{ title: "Sample", snippet: "Hello" }],
+            effectiveTags: ["imported-chatgpt", "batch-job-convert-only"],
+            generatedAt: new Date("2026-03-09T12:00:00.000Z").toISOString(),
+          },
+        },
+      }),
+    };
+
+    const sqlOrchestrator: SqlOrchestrator = {
+      generate: vi.fn(),
+    };
+
+    const dbBackupService: DbBackupService = {
+      createBackup: vi.fn(),
+    };
+    const dbImportService: DbImportService = {
+      applySql: vi.fn(),
+      expectedConfirmationText: "CONFIRM_DB_WRITE",
+    };
+
+    const jobRunner = createJobRunner({
+      env,
+      jobsRepository,
+      jobStateMachine,
+      jobLogService,
+      precheckService,
+      conversionOrchestrator,
+      sqlOrchestrator,
+      dbBackupService,
+      dbImportService,
+    });
+
+    await jobRunner.runNow({
+      jobId,
+      source: "chatgpt",
+      mode: "convert_only",
+      inputMode: "files",
+      inputPaths: [path.join(rootDir, "inputs", "chat-1.json")],
+      userId: "user-1",
+      tags: ["project-alpha"],
+    });
+
+    const job = jobsRepository.getJobById(jobId);
+    const output = jobsRepository.getJobOutput(jobId);
+
+    expect(job?.status).toBe("completed");
+    expect(job?.error).toBeNull();
+    expect(output).toMatchObject({
+      convertedCount: 1,
+      previewPath: path.join(rootDir, "preview", "job-convert-only.preview.json"),
+      sqlPath: null,
+      appliedToDb: 0,
+    });
+    expect(sqlOrchestrator.generate).not.toHaveBeenCalled();
     expect(dbBackupService.createBackup).not.toHaveBeenCalled();
     expect(dbImportService.applySql).not.toHaveBeenCalled();
   });

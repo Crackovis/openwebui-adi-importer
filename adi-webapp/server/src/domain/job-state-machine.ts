@@ -19,7 +19,7 @@ const transitionMap: Record<JobStatus, JobStatus[]> = {
   queued: ["precheck", "cancelled"],
   precheck: ["converting", "failed_precheck", "cancelled"],
   converting: ["preview_ready", "failed_convert", "cancelled"],
-  preview_ready: ["sql_ready", "failed_sql", "cancelled"],
+  preview_ready: ["sql_ready", "completed", "failed_sql", "cancelled"],
   sql_ready: ["db_importing", "completed", "failed_sql", "cancelled"],
   db_importing: ["completed", "failed_db", "cancelled"],
   completed: [],

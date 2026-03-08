@@ -28,7 +28,7 @@ export type JobStatus =
   | "cancelled";
 
 export type JobSource = "chatgpt" | "claude" | "grok" | "aistudio";
-export type JobMode = "sql" | "direct_db";
+export type JobMode = "convert_only" | "sql" | "direct_db";
 
 export type JobSummary = {
   id: string;

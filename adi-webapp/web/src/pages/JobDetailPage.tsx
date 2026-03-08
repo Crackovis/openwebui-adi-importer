@@ -27,6 +27,35 @@ const isRetryableStatus = (status: JobStatus): boolean => {
   return retryableStatuses.has(status);
 };
 
+const ACTION_LABELS: Record<"convert_only" | "sql" | "direct_db", string> = {
+  convert_only: "Convert only",
+  sql: "Generate SQL",
+  direct_db: "Direct DB import",
+};
+
+const formatAction = (mode: unknown): string => {
+  if (mode === "convert_only" || mode === "sql" || mode === "direct_db") {
+    return ACTION_LABELS[mode];
+  }
+  if (typeof mode === "string" && mode.trim().length > 0) {
+    return `${mode} (legacy)`;
+  }
+  return "Generate SQL (legacy default)";
+};
+
+const actionOutputSummary = (mode: unknown): string => {
+  if (mode === "convert_only") {
+    return "This action stops after conversion and preview artifact generation.";
+  }
+  if (mode === "sql") {
+    return "This action runs conversion first, then generates a SQL artifact for manual DB application.";
+  }
+  if (mode === "direct_db") {
+    return "This action runs conversion, generates SQL, then applies it directly to OpenWebUI after backup.";
+  }
+  return "This run completed with legacy action metadata. Check timeline logs for exact execution steps.";
+};
+
 const parseInputPaths = (raw: string | undefined): string[] => {
   if (!raw) {
     return [];
@@ -164,8 +193,8 @@ export const JobDetailPage = (): JSX.Element => {
               <p className="meta-value">{job.source}</p>
             </article>
             <article className="meta-card">
-              <p className="meta-label">Mode</p>
-              <p className="meta-value">{job.mode}</p>
+              <p className="meta-label">Action</p>
+              <p className="meta-value">{formatAction(job.mode)}</p>
             </article>
           </div>
 
@@ -184,12 +213,19 @@ export const JobDetailPage = (): JSX.Element => {
           <div className="panel">
             <h3>Outputs</h3>
             <p style={{ color: "#a8b4c7" }}>
-              Conversion runs before SQL/direct DB steps and writes OpenWebUI-style JSON artifacts.
+              {actionOutputSummary(job.mode)}
             </p>
             <p>Converted count: {job.output?.convertedCount ?? 0}</p>
             <p>Preview path: {job.output?.previewPath ?? "-"}</p>
             <p>Backup path: {job.output?.backupPath ?? "-"}</p>
             <p>Applied to DB: {job.output?.appliedToDb ? "yes" : "no"}</p>
+            {job.output?.previewPath ? (
+              <p>
+                <a href={`${API_BASE_URL}/api/jobs/${job.id}/artifacts/preview`} target="_blank" rel="noreferrer">
+                  Download Preview JSON
+                </a>
+              </p>
+            ) : null}
             {job.output?.sqlPath ? (
               <a href={`${API_BASE_URL}/api/jobs/${job.id}/artifacts/sql`} target="_blank" rel="noreferrer">
                 Download SQL Artifact

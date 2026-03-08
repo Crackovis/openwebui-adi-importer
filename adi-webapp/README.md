@@ -15,8 +15,9 @@ ADI Importer provides a web interface to import conversations from various AI pl
 - **Import Wizard**: Multi-step guided import process
 - **Auto OpenWebUI Discovery**: Resolves OpenWebUI URL, user identity, and DB path when possible
 - **Format Conversion Pipeline**: Converts ChatGPT, Claude, Grok, and AI Studio exports into OpenWebUI-style JSON artifacts
-- **SQL Generation Mode**: Export import SQL for manual execution
-- **Direct DB Import Mode**: Automatic import with automatic backups
+- **Convert-Only Action**: Export normalized OpenWebUI JSON artifacts without SQL generation
+- **SQL Generation Action**: Export import SQL for manual execution
+- **Direct DB Import Action**: Automatic import with automatic backups
 - **Pre-check Validation**: Validates environment before running
 - **Conversion Preview**: See what will be imported before execution
 - **Job History**: Track all import operations with full logs
@@ -38,7 +39,7 @@ ADI wraps `openwebui-importer` and exposes more than `job-<id>.sql` output:
 - Node.js 20+ (for local development)
 - Python 3.8+ (for conversion scripts)
 - Docker & Docker Compose (for containerized deployment)
-- OpenWebUI database (for Direct DB mode)
+- OpenWebUI database (for Direct DB action)
 
 ## Quick Start
 
@@ -130,7 +131,7 @@ Changes apply immediately to new uploads/jobs (no server restart), including:
 - `Max Input Size (bytes)`
 - `Subprocess Timeout (ms)`
 
-When running with Docker on Windows + Pinokio, `docker-compose.yml` mounts `${PINOKIO_HOST_ROOT:-C:/pinokio}` into `/pinokio` for the server container.
+When running with Docker on Windows + Pinokio, `docker-compose.yml` mounts `${PINOKIO_HOST_ROOT:-C:/pinokio}` into `/pinokio` for the server container in read-write mode so Direct DB action can update `webui.db`.
 
 ## Usage
 
@@ -144,7 +145,7 @@ Navigate to http://localhost:5173 to see the dashboard.
 2. Select source (ChatGPT, Claude, Grok, or AI Studio)
 3. Upload files or select a folder
 4. Keep auto-detection defaults (open advanced overrides only if needed)
-5. Choose import mode (SQL or Direct DB)
+5. Choose action (Convert only, Generate SQL, or Direct DB import)
 6. Review and submit
 
 ### 3. Monitor Progress
@@ -153,13 +154,19 @@ Navigate to http://localhost:5173 to see the dashboard.
 - Click a job to see detailed logs
 - Stream logs in real-time via SSE
 
-### 4. SQL Mode
+### 4. Convert-Only Action
+
+- Conversion runs and produces normalized preview artifacts
+- No SQL artifact is generated
+- No database write is attempted
+
+### 5. SQL Action
 
 - Conversion still runs first and produces normalized preview artifacts.
 - Download generated SQL from the job detail page
 - Execute manually in your OpenWebUI database
 
-### 5. Direct DB Mode
+### 6. Direct DB Action
 
 - Automatic backup before import
 - One-click execution with rollback protection
@@ -237,18 +244,20 @@ cd web && npm run test -- --coverage
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) - Detailed setup instructions
-- [Operations](docs/operations.md) - SQL mode vs Direct DB mode
+- [Operations](docs/operations.md) - Action options and execution behavior
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 
 ## Architecture
 
 ### State Machine
 
-Jobs follow a strict state machine:
+Jobs follow a strict state machine with action-based branching:
 
 ```
-queued → precheck → converting → preview_ready → sql_ready → db_importing → completed
-  ↓           ↓            ↓              ↓            ↓             ↓
+queued → precheck → converting → preview_ready ┬→ completed (convert_only)
+                                               └→ sql_ready ┬→ completed (sql)
+                                                            └→ db_importing → completed (direct_db)
+  ↓           ↓            ↓                      ↓             ↓               ↓
 failed_*   cancelled
 ```
 

@@ -283,6 +283,9 @@ const validateDirectDbReadiness = (
   issues: PrecheckIssue[],
 ): boolean => {
   const issueCountBefore = issues.length;
+  const dbDirectory = path.dirname(dbPath);
+  const writableHint =
+    "If running in Docker, ensure the database mount is read-write (for example, remove ':ro' in docker-compose volume mapping).";
 
   try {
     fs.accessSync(dbPath, fs.constants.W_OK);
@@ -290,7 +293,19 @@ const validateDirectDbReadiness = (
     issues.push(
       toIssue(
         "DB_PATH_NOT_WRITABLE",
-        "OpenWebUI database is not writable. Ensure file permissions allow write access before Direct DB mode.",
+        `OpenWebUI database is not writable. Ensure file permissions allow write access before Direct DB mode. ${writableHint}`,
+        issuePath,
+      ),
+    );
+  }
+
+  try {
+    fs.accessSync(dbDirectory, fs.constants.W_OK);
+  } catch {
+    issues.push(
+      toIssue(
+        "DB_DIRECTORY_NOT_WRITABLE",
+        `OpenWebUI database directory is not writable. SQLite may need to create WAL/SHM files next to webui.db. ${writableHint}`,
         issuePath,
       ),
     );

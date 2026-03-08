@@ -29,13 +29,23 @@ const sqlJobSchema = sharedJobSchema.extend({
   confirmationText: z.string().optional(),
 });
 
+const convertOnlyJobSchema = sharedJobSchema.extend({
+  mode: z.literal("convert_only"),
+  dbPath: optionalNonEmptyString,
+  confirmationText: z.string().optional(),
+});
+
 const directDbJobSchema = sharedJobSchema.extend({
   mode: z.literal("direct_db"),
   dbPath: optionalNonEmptyString,
   confirmationText: z.literal(DB_IMPORT_CONFIRMATION_TEXT),
 });
 
-export const createJobRequestSchema = z.discriminatedUnion("mode", [sqlJobSchema, directDbJobSchema]);
+export const createJobRequestSchema = z.discriminatedUnion("mode", [
+  convertOnlyJobSchema,
+  sqlJobSchema,
+  directDbJobSchema,
+]);
 
 export const listJobsQuerySchema = z
   .object({

@@ -145,7 +145,8 @@ SERVER_PORT=8788
 | "File too large" | Exceeds size limit | Increase MAX_INPUT_TOTAL_BYTES |
 | "Too many files" | Exceeds file limit | Increase MAX_INPUT_FILES or split batch |
 | "Unable to resolve OpenWebUI user identity" | Auto-discovery cannot authenticate to OpenWebUI | Set `OPENWEBUI_AUTH_TOKEN` or use advanced token/API key override |
-| "Unable to resolve OpenWebUI database path" | Direct DB mode cannot infer `webui.db` path | Set `OPENWEBUI_DATA_DIR`, `OPENWEBUI_DATABASE_URL`, or advanced DB path override |
+| "Unable to resolve OpenWebUI database path" | Direct DB action cannot infer `webui.db` path | Set `OPENWEBUI_DATA_DIR`, `OPENWEBUI_DATABASE_URL`, or advanced DB path override |
+| "OpenWebUI database is not writable" | `webui.db` mount/path is read-only | Use a read-write mount (avoid `:ro`) and verify file + parent directory write access |
 
 ### OpenWebUI Auto-Discovery Returns 401
 
@@ -218,8 +219,9 @@ SERVER_PORT=8788
    services:
      server:
        volumes:
-          - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:ro"
+           - "${PINOKIO_HOST_ROOT:-C:/pinokio}:/pinokio:rw"
    ```
+   Read-only mounts (`:ro`) trigger: `OpenWebUI database is not writable`.
 
 3. **Check database path**:
    ```bash
@@ -235,7 +237,7 @@ SERVER_PORT=8788
 
 5. **Database locked**:
     - Stop OpenWebUI while importing
-    - Or use SQL mode instead
+    - Or use SQL action instead
 
 6. **Restore from backup** if corruption occurs:
    ```bash
