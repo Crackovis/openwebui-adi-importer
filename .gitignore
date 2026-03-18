@@ -302,3 +302,9 @@ docker-compose.override.yml
 # -----------------------------------------------------------------------------
 .notions/
 .notions/*
+
+.migration/
+.migration/*
+
+.obsidian/
+.obsidian/*
