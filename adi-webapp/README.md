@@ -68,17 +68,37 @@ cd adi-webapp
 # Copy environment file
 cp .env.example .env
 
-# Install server dependencies
-cd server && npm install
+# Install all dependencies (server + web) in one command
+npm install
 
-# Install web dependencies
-cd ../web && npm install
+# Start both server and web concurrently
+npm run dev
 
-# Terminal 1: Start server
+# Web UI: http://localhost:5173
+# API:    http://localhost:8787
+```
+
+**Available monorepo commands:**
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install all dependencies (server + web) |
+| `npm run dev` | Start server and web concurrently |
+| `npm run build` | Build server (TypeScript) and web (Vite) |
+| `npm run test` | Run all tests (server + web) |
+| `npm run clean` | Remove all node_modules and build artifacts |
+| `npm run rebuild` | Clean then reinstall everything |
+
+Individual workspace commands also work (backward-compatible):
+
+```bash
+# Server only
 cd server && npm run dev
+cd server && npm test
 
-# Terminal 2: Start web
+# Web only
 cd web && npm run dev
+cd web && npm test
 ```
 
 ## Configuration
@@ -215,11 +235,10 @@ adi-webapp/
 ## Testing
 
 ```bash
-# Run all tests
-cd server && npm test
-cd web && npm test
+# Run all tests from root (recommended)
+npm run test
 
-# Run with coverage
+# Run with coverage (individual workspaces)
 cd server && npm run test -- --coverage
 cd web && npm run test -- --coverage
 ```
@@ -274,10 +293,11 @@ failed_*   cancelled
 ### Build for Production
 
 ```bash
-# Build server
-cd server && npm run build
+# Build both server and web from root (recommended)
+npm run build
 
-# Build web
+# Or build individually
+cd server && npm run build
 cd web && npm run build
 ```
 

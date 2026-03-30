@@ -60,16 +60,26 @@ cd adi-webapp
 # Copy environment file
 cp .env.example .env
 
-# Terminal 1: Install and start server
-cd server
+# Install all dependencies (server + web) in one command
 npm install
+
+# Start both server and web concurrently
 npm run dev
 
-# Terminal 2: Install and start web UI
-cd ../web
-npm install
-npm run dev
+# Web UI: http://localhost:5173
+# API:    http://localhost:8787
 ```
+
+**Monorepo commands reference:**
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install all dependencies (server + web) |
+| `npm run dev` | Start server and web concurrently |
+| `npm run build` | Build both workspaces |
+| `npm run test` | Run all tests |
+| `npm run clean` | Remove all node_modules and build artifacts |
+| `npm run rebuild` | Clean then reinstall (use after Node.js version change) |
 
 ## First Run
 
@@ -240,16 +250,17 @@ Choose the platform your exports are from:
 Run the test suite to ensure everything is working:
 
 ```bash
-# Backend tests
-cd server && npm test
+# Run all tests from root (recommended)
+npm run test
 
-# Frontend tests
+# Or run individually
+cd server && npm test
 cd web && npm test
 ```
 
-All 23 tests should pass:
-- 18 backend tests (precheck, state machine, tagging, SQL integration)
-- 5 frontend tests (wizard flow, job detail)
+All 38 tests should pass:
+- 31 backend tests (precheck, state machine, tagging, SQL integration, API, repos)
+- 7 frontend tests (wizard flow, job detail)
 
 ## Support
 

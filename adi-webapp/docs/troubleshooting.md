@@ -12,6 +12,34 @@ Common issues and their solutions.
 
 ## Installation Issues
 
+### Native Module Version Mismatch (better-sqlite3)
+
+**Problem**: Server fails to start with:
+```
+Error: The module 'better_sqlite3.node' was compiled against a different Node.js version
+using NODE_MODULE_VERSION X. This version of Node.js requires NODE_MODULE_VERSION Y.
+```
+
+**Cause**: `better-sqlite3` contains native C++ bindings that must be compiled for your specific Node.js version. This happens when you switch Node.js versions or copy `node_modules` from another machine.
+
+**Solution**: Rebuild or reinstall from the monorepo root:
+```bash
+cd adi-webapp
+
+# Option 1: Rebuild native modules in-place (fast)
+npm rebuild better-sqlite3 --workspace=server
+
+# Option 2: Full clean and reinstall (thorough)
+npm run rebuild
+```
+
+**Verify fix**:
+```bash
+node -e "require('./server/node_modules/better-sqlite3')(':memory:'); console.log('OK')"
+```
+
+---
+
 ### Node Modules Installation Fails
 
 **Problem**: `npm install` fails with permission errors or network issues.
