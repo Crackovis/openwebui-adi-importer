@@ -1,0 +1,238 @@
+/* src/styles.css */
+:root {
+  color-scheme: light;
+  --bg: #f3f7f6;
+  --bg-elevated: #ffffff;
+  --bg-soft: #e8f0ee;
+  --line: #c7d9d4;
+  --text: #10201d;
+  --muted: #4d6660;
+  --primary: #0f8c73;
+  --primary-strong: #0a6c59;
+  --warning: #b35b00;
+  --danger: #9c2f28;
+  --radius: 14px;
+  --shadow: 0 12px 30px rgba(16, 32, 29, 0.08);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(
+      circle at 80% -10%,
+      #d1f0e7 0%,
+      transparent 50%),
+    var(--bg);
+}
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+}
+p {
+  margin: 0;
+}
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+}
+.background-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(15, 140, 115, 0.1),
+      transparent 40%);
+}
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 1.2rem clamp(1rem, 3vw, 2rem);
+  background: rgba(243, 247, 246, 0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.eyebrow {
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.app-main {
+  width: min(1120px, 100% - 2rem);
+  margin: 1.4rem auto 2rem;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.nav-link {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.nav-link:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+}
+.nav-link-active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: transparent;
+}
+.page {
+  display: grid;
+  gap: 1rem;
+}
+.panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: clamp(0.9rem, 2vw, 1.2rem);
+  box-shadow: var(--shadow);
+}
+.panel h2,
+.panel h3 {
+  margin-bottom: 0.5rem;
+}
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.7rem;
+}
+.meta-card {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  padding: 0.8rem;
+}
+.meta-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.meta-value {
+  margin-top: 0.2rem;
+  font-size: 1.2rem;
+  font-family: "Space Grotesk", sans-serif;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.8rem;
+}
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+.input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 0.6rem;
+  align-items: center;
+}
+.field label {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.62rem 0.72rem;
+  font: inherit;
+  color: var(--text);
+  background: #ffffff;
+}
+.field textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.62rem 0.9rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--primary);
+  color: #fff;
+}
+button.secondary {
+  background: #d7e7e2;
+  color: var(--text);
+}
+button.warning {
+  background: var(--warning);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.65rem;
+  background: #d8efe8;
+  color: #105244;
+  font-size: 0.8rem;
+}
+.chip.fail {
+  background: #f4ddda;
+  color: var(--danger);
+}
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.55rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.94rem;
+}
+.error-text {
+  color: var(--danger);
+}
+@media (max-width: 760px) {
+  .app-main {
+    width: calc(100% - 1rem);
+  }
+}
+@media (max-width: 520px) {
+  .input-row {
+    grid-template-columns: 1fr;
+  }
+}
+/*# sourceMappingURL=main.css.map */
