@@ -142,31 +142,27 @@ SERVER_PORT=8788
 
 ### Frontend Dev Server (`http://localhost:5173`) Is Inaccessible
 
-**Problem**: `npm run dev` (or `npm run dev --workspace=web`) starts, then the web process exits with:
+**Problem**: `npm run dev` (or `npm run dev --workspace=web`) exits with:
 ```bash
 Error: Cannot find module @rollup/rollup-<platform>
 ```
 
-**Cause**: Vite depends on Rollup's optional platform package. In some environments (proxy/security registry policies or npm optional dependency bugs), that package is skipped/blocked, so Vite exits before it can listen on port `5173`.
+**Cause**: Registry policy can block Rollup's native optional packages (`@rollup/rollup-*`). When that happens, Vite and Vitest fail during startup before binding to port `5173`.
 
-**Solutions**:
-1. Rebuild dependencies from the monorepo root:
-   ```bash
-   cd adi-webapp
-   npm run rebuild
-   ```
-2. Start only the web workspace to confirm Vite can stay alive:
+**Current runtime-safe fix in this repo**:
+- The web workspace dev/build commands use an `esbuild` fallback script instead of invoking Vite directly.
+- This keeps local runtime and production build unblocked under strict registry policies while preserving the existing React app.
+
+**Commands**:
+1. Start web workspace:
    ```bash
    npm run dev --workspace=web
    ```
-3. If the same Rollup error persists, ask your registry/proxy administrator to allow Rollup optional packages under `@rollup/*` (for your platform/arch), then reinstall:
+2. Build web workspace:
    ```bash
-   npm install
+   npm run build --workspace=web
    ```
-4. Re-run the full monorepo dev workflow:
-   ```bash
-   npm run dev
-   ```
+3. If your environment later allows `@rollup/*`, you can restore Vite workflows in a follow-up maintenance task.
 
 ### Subprocess Timeout
 
