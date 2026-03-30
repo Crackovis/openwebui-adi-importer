@@ -308,3 +308,6 @@ docker-compose.override.yml
 
 .obsidian/
 .obsidian/*
+# Keep TypeScript source libraries tracked
+!adi-webapp/server/src/lib/
+!adi-webapp/server/src/lib/**
