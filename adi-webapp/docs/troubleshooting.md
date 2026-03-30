@@ -140,6 +140,34 @@ SERVER_PORT=8788
 
 4. Clear browser cache and reload
 
+### Frontend Dev Server (`http://localhost:5173`) Is Inaccessible
+
+**Problem**: `npm run dev` (or `npm run dev --workspace=web`) starts, then the web process exits with:
+```bash
+Error: Cannot find module @rollup/rollup-<platform>
+```
+
+**Cause**: Vite depends on Rollup's optional platform package. In some environments (proxy/security registry policies or npm optional dependency bugs), that package is skipped/blocked, so Vite exits before it can listen on port `5173`.
+
+**Solutions**:
+1. Rebuild dependencies from the monorepo root:
+   ```bash
+   cd adi-webapp
+   npm run rebuild
+   ```
+2. Start only the web workspace to confirm Vite can stay alive:
+   ```bash
+   npm run dev --workspace=web
+   ```
+3. If the same Rollup error persists, ask your registry/proxy administrator to allow Rollup optional packages under `@rollup/*` (for your platform/arch), then reinstall:
+   ```bash
+   npm install
+   ```
+4. Re-run the full monorepo dev workflow:
+   ```bash
+   npm run dev
+   ```
+
 ### Subprocess Timeout
 
 **Problem**: Import jobs fail with "Subprocess timeout" error.
