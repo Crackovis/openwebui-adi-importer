@@ -32,6 +32,7 @@ export const indexHtml = `<!doctype html>
       rel="stylesheet"
     />
     <title>ADI Importer</title>
+    <link rel="stylesheet" href="/assets/main.css" />
   </head>
   <body>
     <div id="root"></div>
